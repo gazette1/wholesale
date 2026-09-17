@@ -12,10 +12,11 @@
     "./dev": "./src/dev.ts"
   },
   "scripts": {
-    "generate": "drizzle-kit generate",
+    "generate": "drizzle-kit generate && tsx scripts/embed-migrations.ts",
     "seed": "tsx src/seed/run.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "embed": "tsx scripts/embed-migrations.ts"
   },
   "dependencies": {
     "@dealcalc/engine": "workspace:*",
