@@ -1,0 +1,687 @@
+{
+ "source": {
+  "sheet": "Rehab Estimator",
+  "workbook": "Deal Analyzer + Rehab Estimator.xlsx",
+  "sha256": "35b36e0fbe2960a8819bbf4ab05c7d1335fc52a3d46fa9e51c2079dea023a786"
+ },
+ "inputs": {
+  "address": "Address: Bagley Avenue ",
+  "lines": [
+   {
+    "row": 3,
+    "itemNumber": 1,
+    "question": "Need a Roof?",
+    "option": "Single?",
+    "answer": "Yes",
+    "quantity": 1.0,
+    "unitCost": 6000.0
+   },
+   {
+    "row": 4,
+    "itemNumber": 1,
+    "question": null,
+    "option": "Full Roof  Multi Unit ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 9000.0
+   },
+   {
+    "row": 5,
+    "itemNumber": 1,
+    "question": null,
+    "option": "1 Layer of Shingles Added  Low ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 2500.0
+   },
+   {
+    "row": 6,
+    "itemNumber": 1,
+    "question": null,
+    "option": "1 Layer of Shingles Added  High ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 3000.0
+   },
+   {
+    "row": 7,
+    "itemNumber": 2,
+    "question": "Exterion Paint/Siding?",
+    "option": "Paint Single Fam Home",
+    "answer": "Yes",
+    "quantity": 1.0,
+    "unitCost": 3000.0
+   },
+   {
+    "row": 8,
+    "itemNumber": 2,
+    "question": null,
+    "option": "Paint Multi Fam  Low  1500sq ft",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 6000.0
+   },
+   {
+    "row": 9,
+    "itemNumber": 2,
+    "question": null,
+    "option": "Paint Multi Fam  Low  3000sq ft",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 7000.0
+   },
+   {
+    "row": 10,
+    "itemNumber": 2,
+    "question": null,
+    "option": "Sinding Single Fam  Low  1500sq ft",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 7000.0
+   },
+   {
+    "row": 11,
+    "itemNumber": 2,
+    "question": null,
+    "option": "Siding Multi Fam  Low  3000sq ft",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 11000.0
+   },
+   {
+    "row": 12,
+    "itemNumber": 3,
+    "question": "Need Windows?",
+    "option": "Cost/Window",
+    "answer": "Yes",
+    "quantity": 20.0,
+    "unitCost": 250.0
+   },
+   {
+    "row": 13,
+    "itemNumber": 4,
+    "question": "Garage Repair?",
+    "option": "Garage Door",
+    "answer": "Yes",
+    "quantity": 1.0,
+    "unitCost": 550.0
+   },
+   {
+    "row": 14,
+    "itemNumber": 4,
+    "question": null,
+    "option": "Reframe Stucture",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 1500.0
+   },
+   {
+    "row": 15,
+    "itemNumber": 4,
+    "question": null,
+    "option": "1 Car Garage Paint",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 500.0
+   },
+   {
+    "row": 16,
+    "itemNumber": 4,
+    "question": null,
+    "option": "2 Car Garage Paint",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 1000.0
+   },
+   {
+    "row": 17,
+    "itemNumber": 4,
+    "question": null,
+    "option": "Roof",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 2000.0
+   },
+   {
+    "row": 18,
+    "itemNumber": 5,
+    "question": "Yard Cleaned/Landscapes",
+    "option": "Clean Yard  Easy ",
+    "answer": "Yes",
+    "quantity": 1.0,
+    "unitCost": 5000.0
+   },
+   {
+    "row": 19,
+    "itemNumber": 5,
+    "question": null,
+    "option": "Clean Yard  Hard ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 750.0
+   },
+   {
+    "row": 20,
+    "itemNumber": 5,
+    "question": null,
+    "option": "Landscape  Easy ",
+    "answer": "Yes",
+    "quantity": 1.0,
+    "unitCost": 500.0
+   },
+   {
+    "row": 21,
+    "itemNumber": 5,
+    "question": null,
+    "option": "Landscape  Hard ",
+    "answer": "No",
+    "quantity": 0.0,
+    "unitCost": 1000.0
+   },
+   {
+    "row": 22,
+    "itemNumber": 6,
+    "question": "Heating or Furnaces Need Replacing?",
+    "option": "Replace Furnace",
+    "answer": "No",
+    "quantity": 1.0,
+    "unitCost": 1500.0
+   },
+   {
+    "row": 23,
+    "itemNumber": 6,
+    "question": null,
+    "option": "Replace Hot Water Heater",
+    "answer": "No",
+    "quantity": 1.0,
+    "unitCost": 600.0
+   },
+   {
+    "row": 24,
+    "itemNumber": 6,
+    "question": null,
+    "option": "Install Zone Baseboard Heater Gut Job",
+    "answer": null,
+    "quantity": null,
+    "unitCost": 4500.0
+   },
+   {
+    "row": 25,
+    "itemNumber": 7,
+    "question": "Plumbimg need Repair?",
+    "option": "New Plumbimg/Floor",
+    "answer": "No",
+    "quantity": 1.0,
+    "unitCost": 2500.0
+   },
+   {
+    "row": 26,
+    "itemNumber": 8,
+    "question": "Electrical Need Repair",
+    "option": "New Panel",
+    "answer": null,
+    "quantity": null,
+    "unitCost": 1500.0
+   },
+   {
+    "row": 27,
+    "itemNumber": 8,
+    "question": null,
+    "option": "# of Floor Fixtures That needs new Fixtures",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 200.0
+   },
+   {
+    "row": 28,
+    "itemNumber": 8,
+    "question": null,
+    "option": " #of floors  Rewire House w/ New Service",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 4000.0
+   },
+   {
+    "row": 29,
+    "itemNumber": 9,
+    "question": "Foundation Need Repair?",
+    "option": "Reframe Support Beam",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 300.0
+   },
+   {
+    "row": 30,
+    "itemNumber": 10,
+    "question": "Basement Need Repair?",
+    "option": "Seal Basement",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 250.0
+   },
+   {
+    "row": 31,
+    "itemNumber": 10,
+    "question": null,
+    "option": " # of 5yard Increments  Pour Concrete Floor",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 800.0
+   },
+   {
+    "row": 32,
+    "itemNumber": 10,
+    "question": null,
+    "option": "Replace Stairwell",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 1000.0
+   },
+   {
+    "row": 33,
+    "itemNumber": 10,
+    "question": null,
+    "option": "Jack 1 Support Beam",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 200.0
+   },
+   {
+    "row": 34,
+    "itemNumber": 11,
+    "question": "Need Interior Paint",
+    "option": " # of square FT ",
+    "answer": "No",
+    "quantity": 1400.0,
+    "unitCost": 2.0
+   },
+   {
+    "row": 35,
+    "itemNumber": 11,
+    "question": null,
+    "option": "Single Family 1500 sf ft",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 2500.0
+   },
+   {
+    "row": 36,
+    "itemNumber": 11,
+    "question": null,
+    "option": "Three Family Home 3000 sq ft",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 4500.0
+   },
+   {
+    "row": 37,
+    "itemNumber": 12,
+    "question": "House Need Carpet?",
+    "option": "Single Family Carpet",
+    "answer": "No",
+    "quantity": 1.0,
+    "unitCost": 1500.0
+   },
+   {
+    "row": 38,
+    "itemNumber": 13,
+    "question": "House Need Tile/Vinyl",
+    "option": "Three Family Home",
+    "answer": null,
+    "quantity": null,
+    "unitCost": 2000.0
+   },
+   {
+    "row": 39,
+    "itemNumber": 14,
+    "question": "Floor need to be sanded?",
+    "option": "1 Unit Carpet  500 sq ft : $500 Carpet Rule:Sq ft. / 9 x $10=Cost",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": null
+   },
+   {
+    "row": 40,
+    "itemNumber": 14,
+    "question": null,
+    "option": "1 Unit Carpet  500 sq ft : $500 Carpet Rule:Sq ft. / 9 x $10=Cost",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": null
+   },
+   {
+    "row": 41,
+    "itemNumber": 14,
+    "question": null,
+    "option": "1 Kitchen Vinyl tiles  10x10  = $700",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": null
+   },
+   {
+    "row": 42,
+    "itemNumber": 14,
+    "question": null,
+    "option": "Hardwood Install = $7.00 sq/ft Sand & Refinish= $2.75sq/ft",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": null
+   },
+   {
+    "row": 43,
+    "itemNumber": 15,
+    "question": "Unit 1 Kitchen Need Repair",
+    "option": "Single Fam Rental",
+    "answer": "No",
+    "quantity": 0.0,
+    "unitCost": 2000.0
+   },
+   {
+    "row": 44,
+    "itemNumber": 16,
+    "question": "Unit 2 Kitcken Need Repair?",
+    "option": "Three Fam Rental",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 6000.0
+   },
+   {
+    "row": 45,
+    "itemNumber": 17,
+    "question": "Unit 3 Kitchen Need Repair?",
+    "option": "Single Fam Owner",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 3500.0
+   },
+   {
+    "row": 46,
+    "itemNumber": 17,
+    "question": null,
+    "option": "Three Fam Owner",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 7500.0
+   },
+   {
+    "row": 47,
+    "itemNumber": 17,
+    "question": null,
+    "option": "Single Family Nice",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 4000.0
+   },
+   {
+    "row": 48,
+    "itemNumber": 18,
+    "question": "Kitchen Need Appliances?",
+    "option": "Stove",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 350.0
+   },
+   {
+    "row": 49,
+    "itemNumber": 18,
+    "question": null,
+    "option": "Refridgerator",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 500.0
+   },
+   {
+    "row": 50,
+    "itemNumber": 18,
+    "question": null,
+    "option": "Overhead Microwave",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 200.0
+   },
+   {
+    "row": 51,
+    "itemNumber": 18,
+    "question": null,
+    "option": "Dishwasher",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 250.0
+   },
+   {
+    "row": 52,
+    "itemNumber": 19,
+    "question": "Unit 1 Bath need Repair?",
+    "option": "Redo Full Bath",
+    "answer": "No",
+    "quantity": 1.0,
+    "unitCost": 1500.0
+   },
+   {
+    "row": 53,
+    "itemNumber": 20,
+    "question": "Unit 2 Bath need Repair?",
+    "option": "Redo Half Bath",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 1000.0
+   },
+   {
+    "row": 54,
+    "itemNumber": 21,
+    "question": "Unit 3 Bath need Repair?",
+    "option": "Fixtures only Full Bath",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 500.0
+   },
+   {
+    "row": 55,
+    "itemNumber": 21,
+    "question": null,
+    "option": "Fixtures Only Half Bath",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 350.0
+   },
+   {
+    "row": 56,
+    "itemNumber": 22,
+    "question": "Sheetrock damaged or Need Replacing?",
+    "option": " # of Square FT  Total Gut Job",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 3.0
+   },
+   {
+    "row": 57,
+    "itemNumber": 22,
+    "question": null,
+    "option": "Single Fam Patch  Low ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 500.0
+   },
+   {
+    "row": 58,
+    "itemNumber": 22,
+    "question": null,
+    "option": "Single Fam Patch  High ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 1000.0
+   },
+   {
+    "row": 59,
+    "itemNumber": 22,
+    "question": null,
+    "option": "Single Fam Gut Rock/Tape  Low ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 9000.0
+   },
+   {
+    "row": 60,
+    "itemNumber": 22,
+    "question": null,
+    "option": "Single Fam Gut Rock/Tape  High ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 10000.0
+   },
+   {
+    "row": 61,
+    "itemNumber": 22,
+    "question": null,
+    "option": "Patch Area  10x10 ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 300.0
+   },
+   {
+    "row": 62,
+    "itemNumber": 23,
+    "question": "Dumpsters",
+    "option": "Dumpster  Low",
+    "answer": "No",
+    "quantity": 1.0,
+    "unitCost": 500.0
+   },
+   {
+    "row": 63,
+    "itemNumber": 24,
+    "question": "Decks",
+    "option": "Dumpster  High ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 600.0
+   },
+   {
+    "row": 64,
+    "itemNumber": 24,
+    "question": null,
+    "option": "Single Family Patch 3 Dumps",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 1000.0
+   },
+   {
+    "row": 65,
+    "itemNumber": 24,
+    "question": null,
+    "option": "Family Gut",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 3500.0
+   },
+   {
+    "row": 66,
+    "itemNumber": 24,
+    "question": null,
+    "option": "Deck  10x10 ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 2000.0
+   },
+   {
+    "row": 67,
+    "itemNumber": 24,
+    "question": null,
+    "option": "Deck  15x15 ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 3500.0
+   },
+   {
+    "row": 68,
+    "itemNumber": 24,
+    "question": null,
+    "option": "3 Family w/ Fire Escape",
+    "answer": null,
+    "quantity": null,
+    "unitCost": 5000.0
+   },
+   {
+    "row": 69,
+    "itemNumber": 25,
+    "question": "Miscellaneous",
+    "option": " # of Square Ft  ",
+    "answer": null,
+    "quantity": 0.0,
+    "unitCost": 0.5
+   }
+  ]
+ },
+ "expected": {
+  "total": 20050,
+  "lineTotals": {
+   "I3": 6000,
+   "I4": 0,
+   "I5": 0,
+   "I6": 0,
+   "I7": 3000,
+   "I8": 0,
+   "I9": 0,
+   "I10": 0,
+   "I11": 0,
+   "I12": 5000,
+   "I13": 550,
+   "I14": 0,
+   "I15": 0,
+   "I16": 0,
+   "I17": 0,
+   "I18": 5000,
+   "I19": 0,
+   "I20": 500,
+   "I21": 0,
+   "I22": 0,
+   "I23": 0,
+   "I24": 0,
+   "I25": 0,
+   "I26": 0,
+   "I27": 0,
+   "I28": 0,
+   "I29": 0,
+   "I30": 0,
+   "I31": 0,
+   "I32": 0,
+   "I33": 0,
+   "I34": 0,
+   "I35": 0,
+   "I36": 0,
+   "I37": 0,
+   "I38": 0,
+   "I39": 0,
+   "I40": 0,
+   "I41": 0,
+   "I42": 0,
+   "I43": 0,
+   "I44": 0,
+   "I45": 0,
+   "I46": 0,
+   "I47": 0,
+   "I48": 0,
+   "I49": 0,
+   "I50": 0,
+   "I51": 0,
+   "I52": 0,
+   "I53": 0,
+   "I54": 0,
+   "I55": 0,
+   "I56": 0,
+   "I57": 0,
+   "I58": 0,
+   "I59": 0,
+   "I60": 0,
+   "I61": 0,
+   "I62": 0,
+   "I63": 0,
+   "I64": 0,
+   "I65": 0,
+   "I66": 0,
+   "I67": 0,
+   "I68": 0,
+   "I69": 0
+  }
+ }
+}

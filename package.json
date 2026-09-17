@@ -1,0 +1,19 @@
+{
+  "name": "dealcalc",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm --filter web dev",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "extract": "python tools/extract_workbook.py"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4",
+    "tsx": "^4.19.2",
+    "@types/node": "^22.10.2"
+  }
+}

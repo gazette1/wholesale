@@ -1,0 +1,61 @@
+{
+ "source": {
+  "sheet": "Quick Offers",
+  "workbook": "Deal Analyzer + Rehab Estimator.xlsx",
+  "sha256": "35b36e0fbe2960a8819bbf4ab05c7d1335fc52a3d46fa9e51c2079dea023a786"
+ },
+ "inputs": {
+  "comps": [
+   300000.0,
+   300000.0,
+   300000.0
+  ],
+  "squareFeet": 2000.0,
+  "assignmentFeeFull": -10000.0,
+  "assignmentFeeMedium": -10000.0,
+  "assignmentFeeLight": -10000.0,
+  "costPerSqftFull": 150.0,
+  "costPerSqftMedium": 100.0,
+  "costPerSqftLight": 60.0,
+  "valueWant": {
+   "probabilityOfSale": 0.6,
+   "timeMonths": 1.0,
+   "effort": 1.0
+  },
+  "valueAre": {
+   "probabilityOfSale": 1.0,
+   "timeMonths": 5.0,
+   "effort": 5.0
+  }
+ },
+ "expected": {
+  "arv": 300000,
+  "arvAverage": 300000,
+  "full": {
+   "seventyPercentArv": 210000,
+   "allInMaxLimit": 200000,
+   "repairCosts": -300000,
+   "offer": -100000,
+   "pctOfArv": -0.3333333333
+  },
+  "medium": {
+   "seventyPercentArv": 210000,
+   "allInMaxLimit": 200000,
+   "repairCosts": -200000,
+   "offer": 0,
+   "pctOfArv": 0
+  },
+  "light": {
+   "seventyPercentArv": 210000,
+   "allInMaxLimit": 200000,
+   "repairCosts": -120000,
+   "offer": 80000,
+   "pctOfArv": 0.2666666667
+  },
+  "valueWantPrice": 300000,
+  "valueArePrice": 300000,
+  "valueWant": 180000,
+  "valueAre": 12000,
+  "valueDifference": 168000
+ }
+}

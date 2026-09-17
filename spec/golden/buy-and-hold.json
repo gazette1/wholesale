@@ -1,0 +1,482 @@
+{
+ "source": {
+  "sheet": "Buy & Hold",
+  "workbook": "Deal Analyzer + Rehab Estimator.xlsx",
+  "sha256": "35b36e0fbe2960a8819bbf4ab05c7d1335fc52a3d46fa9e51c2079dea023a786"
+ },
+ "inputs": {
+  "salePrice": 210000.0,
+  "taxValue": 210000.0,
+  "rentGrowthRate": 0.035,
+  "dcrRequired": 1.25,
+  "units": [
+   {
+    "unit": 1.0,
+    "beds": 3.0,
+    "baths": 2.5,
+    "rent": 2000.0,
+    "marketRent": 3000.0
+   },
+   {
+    "unit": 2.0,
+    "beds": 3.0,
+    "baths": 3.0,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 3.0,
+    "beds": 3.0,
+    "baths": 3.0,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 4.0,
+    "beds": 3.0,
+    "baths": 3.0,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 5.0,
+    "beds": 3.0,
+    "baths": 3.0,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 6.0,
+    "beds": 3.0,
+    "baths": 3.0,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 7.0,
+    "beds": 3.0,
+    "baths": 3.0,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 8.0,
+    "beds": 3.0,
+    "baths": 3.0,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 9.0,
+    "beds": 3.0,
+    "baths": 2.5,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 10.0,
+    "beds": 3.0,
+    "baths": 2.5,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 11.0,
+    "beds": 3.0,
+    "baths": 2.5,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 12.0,
+    "beds": 3.0,
+    "baths": 2.5,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 13.0,
+    "beds": 3.0,
+    "baths": 2.5,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 14.0,
+    "beds": 3.0,
+    "baths": 2.5,
+    "rent": 0.0,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 15.0,
+    "beds": null,
+    "baths": null,
+    "rent": null,
+    "marketRent": 0.0
+   },
+   {
+    "unit": 16.0,
+    "beds": null,
+    "baths": null,
+    "rent": null,
+    "marketRent": null
+   },
+   {
+    "unit": 17.0,
+    "beds": null,
+    "baths": null,
+    "rent": null,
+    "marketRent": null
+   },
+   {
+    "unit": 18.0,
+    "beds": null,
+    "baths": null,
+    "rent": null,
+    "marketRent": null
+   },
+   {
+    "unit": 19.0,
+    "beds": null,
+    "baths": null,
+    "rent": null,
+    "marketRent": null
+   },
+   {
+    "unit": 20.0,
+    "beds": null,
+    "baths": null,
+    "rent": null,
+    "marketRent": null
+   }
+  ],
+  "propertyTaxYear": 1400.0,
+  "downPaymentPct": 0.01,
+  "insuranceMonth": 100.0,
+  "interestRate": 0.07,
+  "gasElectricMonth": 0.0,
+  "loanTermYears": 30.0,
+  "waterMonth": 0.0,
+  "closingCosts": 2100,
+  "closingCostsFormula": "=0.01*C5",
+  "sewerMonth": 0.0,
+  "garbageMonth": 0.0,
+  "lawnSnowMonth": 0.0,
+  "managementPct": 0.0,
+  "vacancyPct": 0.0,
+  "maintenancePct": 0.05,
+  "cashReservesPct": 0.0,
+  "vacancyPctDcr": 0,
+  "managementPctDcr": 0,
+  "maintenancePctDcr": 0.05,
+  "improvedValueRatio": 1.0,
+  "marginalTaxRate": 0.21,
+  "appreciationRate": 0.025
+ },
+ "expected": {
+  "current": {
+   "grossRents": 2000,
+   "management": 0,
+   "propertyTaxes": 116.6666667,
+   "insurance": 100,
+   "ownerPaidUtilities": 0,
+   "vacancyReserve": 0,
+   "maintenanceReserve": 100,
+   "totalOperatingExpenses": 316.6666667,
+   "monthlyNoi": 1683.333333,
+   "annualizedNoi": 20200,
+   "capRate": 0.09619047619,
+   "salePrice": 210000,
+   "loanToValue": 0.99,
+   "downPayment": 2100,
+   "closingCosts": 2100,
+   "principal": 207900,
+   "interestRate": 0.07,
+   "termYears": 30,
+   "monthlyMortgage": 1383.163887,
+   "monthlyNet": 300.1694459,
+   "annualizedNet": 3602.03335,
+   "annualizedRoi": 0.8576269882
+  },
+  "market": {
+   "grossRents": 3000,
+   "management": 0,
+   "propertyTaxes": 116.6666667,
+   "insurance": 100,
+   "ownerPaidUtilities": 0,
+   "vacancyReserve": 0,
+   "maintenanceReserve": 150,
+   "totalOperatingExpenses": 366.6666667,
+   "monthlyNoi": 2633.333333,
+   "annualizedNoi": 31600,
+   "capRate": 0.1504761905,
+   "salePrice": 210000,
+   "loanToValue": 0.99,
+   "downPayment": 2100,
+   "closingCosts": 2100,
+   "principal": 207900,
+   "interestRate": 0.07,
+   "termYears": 30,
+   "monthlyMortgage": 1383.163887,
+   "monthlyNet": 1250.169446,
+   "annualizedNet": 15002.03335,
+   "annualizedRoi": 3.571912702
+  },
+  "debtPaydown": [
+   {
+    "year": 1,
+    "totalDebtPaydown": 2111.868635,
+    "roiOnPaydown": 1.005651731
+   },
+   {
+    "year": 2,
+    "totalDebtPaydown": 2264.535789,
+    "roiOnPaydown": 1.078350376
+   },
+   {
+    "year": 3,
+    "totalDebtPaydown": 2428.239265,
+    "roiOnPaydown": 1.156304412
+   },
+   {
+    "year": 4,
+    "totalDebtPaydown": 2603.776878,
+    "roiOnPaydown": 1.239893751
+   },
+   {
+    "year": 5,
+    "totalDebtPaydown": 2792.004119,
+    "roiOnPaydown": 1.329525771
+   }
+  ],
+  "taxDeductions": [
+   {
+    "year": 1,
+    "depreciation": 7636.363636,
+    "totalInterestPaid": 14486.09801,
+    "totalDeductions": 22122.46165
+   },
+   {
+    "year": 2,
+    "depreciation": 7636.363636,
+    "totalInterestPaid": 14333.43086,
+    "totalDeductions": 21969.7945
+   },
+   {
+    "year": 3,
+    "depreciation": 7636.363636,
+    "totalInterestPaid": 14169.72738,
+    "totalDeductions": 21806.09102
+   },
+   {
+    "year": 4,
+    "depreciation": 7636.363636,
+    "totalInterestPaid": 13994.18977,
+    "totalDeductions": 21630.55341
+   },
+   {
+    "year": 5,
+    "depreciation": 7636.363636,
+    "totalInterestPaid": 13805.96253,
+    "totalDeductions": 21442.32617
+   }
+  ],
+  "avgYearlyTaxSavings": 4576.791523,
+  "annualRoiOnTaxSavings": 2.179424535,
+  "dcr": {
+   "proForma": {
+    "grossRents": 24000,
+    "vacancy": 0,
+    "propMgmt": 0,
+    "cashReserves": 0,
+    "taxes": 1400,
+    "insurance": 1200,
+    "maintenanceUtilities": 1200,
+    "totalExpenses": 3800,
+    "noi": 20200,
+    "mortgage": 16597.96665,
+    "dcr": 1.217016543,
+    "netProfit": 3602.03335
+   },
+   "actual": {
+    "grossRents": 36000,
+    "vacancy": 0,
+    "propMgmt": 0,
+    "cashReserves": 0,
+    "taxes": 1400,
+    "insurance": 1200,
+    "maintenanceUtilities": 1200,
+    "totalExpenses": 3800,
+    "noi": 32200,
+    "mortgage": 16597.96665,
+    "dcr": 1.939996668,
+    "netProfit": 15602.03335
+   }
+  },
+  "appreciation": [
+   {
+    "year": 1,
+    "estValue": 215250,
+    "annualGain": 5250,
+    "pctGain": 2.5
+   },
+   {
+    "year": 2,
+    "estValue": 220631.25,
+    "annualGain": 5381.25,
+    "pctGain": 2.5625
+   },
+   {
+    "year": 3,
+    "estValue": 226147.0313,
+    "annualGain": 5515.78125,
+    "pctGain": 2.6265625
+   },
+   {
+    "year": 4,
+    "estValue": 231800.707,
+    "annualGain": 5653.675781,
+    "pctGain": 2.692226563
+   },
+   {
+    "year": 5,
+    "estValue": 237595.7247,
+    "annualGain": 5795.017676,
+    "pctGain": 2.759532227
+   }
+  ],
+  "totalReturn": [
+   {
+    "year": 1,
+    "cashFlow": 3.571912702,
+    "debtPaydown": 1.005651731,
+    "taxSavings": 2.212246165,
+    "appreciation": 2.5,
+    "totalRoi": 9.289810599,
+    "totalDollarReturn": 19508.60226
+   },
+   {
+    "year": 2,
+    "cashFlow": 3.571912702,
+    "debtPaydown": 1.078350376,
+    "taxSavings": 2.19697945,
+    "appreciation": 2.5625,
+    "totalRoi": 9.409742528,
+    "totalDollarReturn": 19760.45931
+   },
+   {
+    "year": 3,
+    "cashFlow": 3.571912702,
+    "debtPaydown": 1.156304412,
+    "taxSavings": 2.180609102,
+    "appreciation": 2.6265625,
+    "totalRoi": 9.535388716,
+    "totalDollarReturn": 20024.3163
+   },
+   {
+    "year": 4,
+    "cashFlow": 3.571912702,
+    "debtPaydown": 1.239893751,
+    "taxSavings": 2.163055341,
+    "appreciation": 2.692226563,
+    "totalRoi": 9.667088357,
+    "totalDollarReturn": 20300.88555
+   },
+   {
+    "year": 5,
+    "cashFlow": 3.571912702,
+    "debtPaydown": 1.329525771,
+    "taxSavings": 2.144232617,
+    "appreciation": 2.759532227,
+    "totalRoi": 9.805203317,
+    "totalDollarReturn": 20590.92696
+   }
+  ],
+  "rentGrowth": [
+   {
+    "year": 1,
+    "marketRent": 3000
+   },
+   {
+    "year": 2,
+    "marketRent": 3105
+   },
+   {
+    "year": 3,
+    "marketRent": 3213.675
+   },
+   {
+    "year": 4,
+    "marketRent": 3326.153625
+   },
+   {
+    "year": 5,
+    "marketRent": 3442.569002
+   },
+   {
+    "year": 6,
+    "marketRent": 3563.058917
+   },
+   {
+    "year": 7,
+    "marketRent": 3687.765979
+   },
+   {
+    "year": 8,
+    "marketRent": 3816.837788
+   },
+   {
+    "year": 9,
+    "marketRent": 3950.427111
+   },
+   {
+    "year": 10,
+    "marketRent": 4088.69206
+   },
+   {
+    "year": 11,
+    "marketRent": 4231.796282
+   },
+   {
+    "year": 12,
+    "marketRent": 4379.909152
+   },
+   {
+    "year": 13,
+    "marketRent": 4533.205972
+   },
+   {
+    "year": 14,
+    "marketRent": 4691.868181
+   },
+   {
+    "year": 15,
+    "marketRent": 4856.083567
+   },
+   {
+    "year": 16,
+    "marketRent": 5026.046492
+   },
+   {
+    "year": 17,
+    "marketRent": 5201.958119
+   },
+   {
+    "year": 18,
+    "marketRent": 5384.026654
+   },
+   {
+    "year": 19,
+    "marketRent": 5572.467587
+   },
+   {
+    "year": 20,
+    "marketRent": 5767.503952
+   }
+  ],
+  "marketRentYear1": 3000,
+  "totalRent": 2000,
+  "totalMarketRent": 3000
+ }
+}
