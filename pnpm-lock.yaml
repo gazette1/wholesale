@@ -96,7 +96,7 @@ importers:
         specifier: ^0.475.0
         version: 0.475.0(react@19.1.0)
       next:
-        specifier: 15.3.5
+        specifier: '15'
         version: 15.3.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       postgres:
         specifier: ^3.4.7
