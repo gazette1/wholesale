@@ -36,6 +36,7 @@ Copy `.env.example` to `apps/web/.env.local`. Next.js reads only that location. 
 | `SUPABASE_SERVICE_ROLE_KEY` | Server side storage uploads. Secret. |
 | `DATABASE_URL` | Postgres connection string (Supabase pooler, port 6543). Without it the app uses PGlite. |
 | `DEV_AUTH_EMAIL` | Development only. Signs you in as the profile with this email. Remove before deploying. |
+| `DEMO_MODE` | `true` lets `DEV_AUTH_EMAIL` work in production for a public demo link on sample data. Never set on a real deployment. |
 | `PROPERTY_DATA_PROVIDER`, `REALESTATEAPI_KEY` | `realestateapi` plus a key enables live property reports and comps. |
 | `MESSAGING_PROVIDER`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID` | `twilio` enables live SMS. |
 | `EMAIL_PROVIDER`, `RESEND_API_KEY`, `EMAIL_FROM` | `resend` enables live email. |

@@ -8,7 +8,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (PUBLIC.some((re) => re.test(pathname))) return NextResponse.next();
 
-  const devAuth = process.env.NODE_ENV !== "production" && process.env.DEV_AUTH_EMAIL;
+  const devAuth = (process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true") && process.env.DEV_AUTH_EMAIL;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) return NextResponse.next();

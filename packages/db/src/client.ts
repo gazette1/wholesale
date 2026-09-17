@@ -35,7 +35,9 @@ export function db(): Db {
     globalStore.__dealcalcDb = createPostgresDb(url);
     globalStore.__dealcalcDbKind = "postgres";
   } else {
-    const dir = process.env.PGLITE_DATA_DIR ?? resolve(process.cwd(), "../../.pglite");
+    // On Vercel the filesystem is read only apart from /tmp, and instances are ephemeral.
+    // An in memory database that reseeds on cold start is enough for a demo link.
+    const dir = process.env.PGLITE_DATA_DIR ?? (process.env.VERCEL ? undefined : resolve(process.cwd(), "../../.pglite"));
     globalStore.__dealcalcDb = createPgliteDb(dir);
     globalStore.__dealcalcDbKind = "pglite";
   }

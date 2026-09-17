@@ -26,7 +26,8 @@ export type Session = {
  */
 export const getSession = cache(async (): Promise<Session | null> => {
   const db = await getDb();
-  const devEmail = process.env.NODE_ENV !== "production" ? process.env.DEV_AUTH_EMAIL : undefined;
+  // DEMO_MODE=true allows the shared demo login in production. Never set it on a real deployment.
+  const devEmail = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true" ? process.env.DEV_AUTH_EMAIL : undefined;
 
   if (supabaseConfigured()) {
     const supabase = await supabaseServer();
