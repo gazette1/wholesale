@@ -12,3 +12,4 @@ tools/tmp/
 .storage/
 apps/web/.next/
 next-env.d.ts
+.vercel/
