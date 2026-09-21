@@ -34,3 +34,6 @@ export const analysisStatusEnum = pgEnum("analysis_status", ["draft", "reviewing
 export const fundingEnum = pgEnum("funding", ["cash", "hard_money", "conventional", "mixed"]);
 export const submissionResponseEnum = pgEnum("submission_response", ["none", "interested", "pass", "offer"]);
 export const savedViewEntityEnum = pgEnum("saved_view_entity", ["leads", "buyers"]);
+export const callStatusEnum = pgEnum("call_status", ["queued", "ringing", "in_progress", "completed", "busy", "no_answer", "failed", "canceled"]);
+export const alertKindEnum = pgEnum("alert_kind", ["lead_untouched", "follow_up_overdue", "offer_expiring"]);
+export const scoreReviewStatusEnum = pgEnum("score_review_status", ["auto_applied", "suggested", "needs_review", "accepted", "overridden"]);

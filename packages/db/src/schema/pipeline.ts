@@ -1,5 +1,5 @@
 import { pgTable, text, uuid, boolean, jsonb, numeric, integer, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
-import { base, leadStatusEnum, urgencyEnum, activityTypeEnum, taskKindEnum, tagKindEnum, offerTypeEnum, offerStatusEnum, savedViewEntityEnum } from "./_shared";
+import { base, leadStatusEnum, urgencyEnum, activityTypeEnum, taskKindEnum, tagKindEnum, offerTypeEnum, offerStatusEnum, savedViewEntityEnum, alertKindEnum, scoreReviewStatusEnum } from "./_shared";
 import { orgs, profiles } from "./identity";
 import { properties, contacts } from "./properties";
 
@@ -104,7 +104,10 @@ export const offers = pgTable("offers", {
   counterAmount: numeric("counter_amount", { precision: 14, scale: 2 }),
   notes: text("notes"),
   createdBy: uuid("created_by").references(() => profiles.id, { onDelete: "set null" }),
-}, (t) => [index("offers_lead_idx").on(t.leadId)]);
+  /** Set when status becomes accepted. Reporting measures days to acceptance from this, not from the current stage. */
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+}, (t) => [index("offers_lead_idx").on(t.leadId), index("offers_expires_idx").on(t.orgId, t.expiresAt)]);
 
 export const documents = pgTable("documents", {
   ...base,
@@ -118,6 +121,42 @@ export const documents = pgTable("documents", {
   size: integer("size").notNull(),
   uploadedBy: uuid("uploaded_by").references(() => profiles.id, { onDelete: "set null" }),
 }, (t) => [index("documents_lead_idx").on(t.leadId)]);
+
+/** Raised by the cron dispatcher. dedupe_key is what stops a repeat run from raising the same alert twice. */
+export const alerts = pgTable("alerts", {
+  ...base,
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  leadId: uuid("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  recipientId: uuid("recipient_id").references(() => profiles.id, { onDelete: "cascade" }),
+  kind: alertKindEnum("kind").notNull(),
+  title: text("title").notNull(),
+  body: text("body"),
+  dedupeKey: text("dedupe_key").notNull(),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+}, (t) => [
+  uniqueIndex("alerts_org_dedupe").on(t.orgId, t.dedupeKey),
+  index("alerts_recipient_idx").on(t.orgId, t.recipientId, t.readAt),
+  index("alerts_lead_idx").on(t.leadId),
+]);
+
+/** One row per scoring run. leads.motivation_score is only written when confidence clears the auto apply threshold. */
+export const leadScores = pgTable("lead_scores", {
+  ...base,
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+  score: integer("score").notNull(),
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+  reasons: jsonb("reasons").$type<string[]>().notNull().default([]),
+  provider: text("provider").notNull(),
+  reviewStatus: scoreReviewStatusEnum("review_status").notNull().default("needs_review"),
+  reviewedBy: uuid("reviewed_by").references(() => profiles.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  overrideScore: integer("override_score"),
+}, (t) => [
+  index("lead_scores_lead_idx").on(t.leadId, t.createdAt),
+  index("lead_scores_review_idx").on(t.orgId, t.reviewStatus),
+]);
 
 export const savedViews = pgTable("saved_views", {
   ...base,
