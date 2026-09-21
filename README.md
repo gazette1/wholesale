@@ -11,8 +11,12 @@ Internal system for a residential wholesale and flip operation: seller lead pipe
 | `packages/db` | Drizzle schema, SQL migrations, seed data, PGlite fallback for local work. |
 | `packages/integrations` | Provider boundaries with real and mock adapters: RealEstateAPI, Twilio, Resend, TypeSafe Jev, file storage. |
 | `spec/` | Workbook extraction, formula spec, anomalies, golden fixtures. Never hand edited. |
-| `docs/` | Architecture, decisions, CRM proposal, integrations guide, implementation plan. |
+| `docs/` | Architecture, decisions, CRM proposal, integrations guide, implementation plan, and `MAC_PARITY.md` (what came over from the Mac app, what did not, and why). |
 | `tools/` | `extract_workbook.py`, rerun when a new workbook arrives. |
+
+## Deal analyzer at a glance
+
+Every analysis belongs to a property and shows on its pipeline card, its quick view drawer, and its lead. Input sections: Deal, Offers (comparables, per foot tiers, seller value), Rehab (checklist, manual, or per square foot, with work status and a progress log), Financing, Holding, Closing costs, Buy and hold, Loan. Result tabs: Offers, Flip P&L, Cash flow, Rehab, Buy and hold, Loan, Sensitivity, Compare. A validation summary names what needs fixing and links to the section. The library on `/analyzer` has search, filters, sort, archive, trash, restore, and duplicate. Versions lock when approved; clone to edit.
 
 ## Run it locally
 
@@ -83,7 +87,7 @@ Desktop installers for Mac and Windows come from wrapping the deployed URL with 
 pnpm test
 ```
 
-Engine: 44 golden and edge tests against the workbook's cached values. Database: schema and seed on PGlite. Integrations: provider mapping, signature verification, judgment parsing.
+Engine: 64 tests. The golden and edge tests pin every workbook calculator to the spreadsheet's cached values; the rest cover the additions that are not in the workbook (quick offer tiers, comparable average, seller value score, rehab source, loan schedule, validation, the deal runner). Database: schema, seed, and the migration ledger on PGlite. Integrations: provider mapping, signature verification, judgment parsing, CSV, webhook signing, URL policy, lead payload parsing.
 
 ## Writing rules for documents in this repo
 
