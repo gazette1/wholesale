@@ -59,6 +59,55 @@ The rule that decided what to build: nothing may change a number that the golden
 | Undo and redo | Browser form state plus versions cover the need. Not built. |
 | Inspection worksheet PDF section | Not reconstructable from the binary. Needs the Swift source or a screenshot. |
 
+## Project model (engine 0.3.0, model 0.2.0-preview)
+
+The deferred financing and cash flow features now have a home that cannot disturb the workbook numbers. `DealInput.project` is optional and absent by default. `runDeal()` passes it to `runProject()` in `packages/engine/src/project/` and returns the result as `outputs.project`. Nothing in that folder is read by `acquisitions()`, `wholesale()`, or the draw cash flow, and `tests/projectModel.test.ts` asserts that every workbook output is identical with the model on and off. In the analyzer it is the "Project model" input section and the "Project model" results tab, both labeled preview. The Flip P&L stays the number of record until Ous approves the model.
+
+| Deferred feature | File | State |
+| --- | --- | --- |
+| Fee items with a basis (fixed, % of purchase, % of sale, % of as is) | `project/fees.ts` | Calculated and tested. |
+| Monthly holding cost lines charged at month start | `project/holdingLines.ts` | Calculated and tested. A part month counts as a month start. |
+| Multiple loans with purchase and rehab funding, points on commitment, fixed fees | `project/financing.ts` | Calculated and tested. |
+| Interest on the drawn balance | `project/financing.ts` | Calculated and tested. It uses the debt at each month start, so it needs a project start date. |
+| Draw tranches, dated rehab expenses, other dated cash events, cash profit reconciliation, holds up to 120 months | `project/cashFlow.ts` | Calculated and tested. The calendar skeleton is `buildProjectTimeline()` and every dated part of the model shares it. |
+| Year by year projection with depreciation, tax savings, cumulative ROI | `project/rentalProjection.ts` | Calculated and tested. It reads the rents, expenses, and loan terms off `DealInput.buyAndHold` through `ProjectContext.rental`. |
+| Mac validation messages for the above | `project/validateProject.ts` | Built and tested. Issues carry the section "project". |
+| Undo and redo, inspection worksheet PDF | none | Still not built, for the reasons in the table above. |
+
+Rules the modules follow, as the Mac reference states them. Check them against the Swift source when it arrives.
+
+- Monthly interest is the annual rate divided by 12. Calendar months. Costs and interest land at month start. Interest on a drawn balance uses the debt at month start. Points are charged on the commitment. No loans means an all cash purchase.
+- Weekly rows carry number, date, cash in, cash out, ending balance, and minimum balance, on calendar dates from the start date through the hold.
+- Draw timing is a percent of the hold period, rounded up to a week. Funding shares apply to each loan's rehab commitment and sum to at most 100 percent.
+- Default rehab spend is even across weeks with the cent adjustment in the final week. Dated rehab expenses must sum to the linked rehab total and fall inside the hold.
+- A negative ending balance is additional owner cash required. Outputs: interest, points and fees, financing costs, cash profit, exit date, and a cash profit reconciliation.
+- Projection: fixed dollar operating expenses stay constant, percentage expenses grow with rent, estimated tax savings sit outside operating cash flow. The return denominator is down payment plus closing costs plus owner funded initial rehab.
+
+### Inferred rules, verify against the Swift source
+
+The reference leaves these gaps. Each one was filled with the simplest reading that keeps the model self consistent, and each one is pinned by a test in `packages/engine/tests/projectModel.test.ts`. None of them touches a workbook number.
+
+1. The grid runs from the start date to the start date plus the hold's month starts, so the number of weeks is the days in that span divided by 7, rounded down, plus one. Week 1 is the start date and every later week is seven days after the one before, which puts the exit date inside the last week.
+2. A dated item is charged in the week that contains its date. A date outside the hold is clamped to the first or the last week. The validator already reports it as an error.
+3. The purchase price, the buying fees, the loan points, and the lender fixed fees are all charged in week 1, the week the purchase loans fund.
+4. The sale proceeds, the selling fees, and the loan payoff all land in the last week. The payoff is the purchase funding plus the rehab the draws actually released, not the full commitment.
+5. Draw timing rounds up against the number of weeks in the grid. A timing of 0 percent moves to week 1 rather than to week 0.
+6. A draw releases its funding share of each loan's rehab commitment, capped so the running total for that loan never passes the commitment. Draws past the commitment release nothing.
+7. Debt at a month start is the loan's purchase funding plus every draw dated on or before that month start. Purchase funding is drawn in full on day one.
+8. Even rehab spend rounds the estimate to whole cents, divides by the week count to the nearest cent for every week but the last, and puts the remainder in the last week, so the schedule sums to the estimate exactly.
+9. Initial owner cash is the opening balance of the grid, not a cash in row. Cash profit is the final ending balance less that opening balance, which is what makes the reconciliation equal the project net profit.
+10. Additional owner cash is the lowest ending balance when that balance is negative. It is not injected back into the rows, so it changes the funding need and not the profit.
+11. Return on owner cash is the project net profit over initial cash plus additional cash. It reads "Not available yet" when that total is zero, which happens when the loans fund the whole project.
+12. A hold longer than 120 months leaves the weekly cash flow unavailable with a reason rather than truncating the grid.
+13. The projection uses market rent, and current rent when no market rent is entered. Year 1 is the rent as entered and each later year grows it by the rent growth rate.
+14. The projection's percentage operating expenses are management plus vacancy plus maintenance from Buy and hold. The fixed dollar ones are property tax, insurance, gas and electric, water, sewer, garbage, and lawn and snow.
+15. Depreciation stops when the depreciable basis is used up. A part year at the end takes what is left.
+16. Estimated tax savings are the marginal tax rate on depreciation plus that year's mortgage interest, the same two deductions the workbook uses on the Buy and Hold sheet.
+17. Appreciation compounds on the property value from the year before, starting at the Buy and hold sale price.
+18. Debt service, mortgage interest, and principal paydown are all zero once the loan term is over.
+
+`runDeal()` passes the rental context into `runProject()` through `projectRentalContext(inputs.buyAndHold)`. The projection is connected to the Buy and hold inputs.
+
 ## Still needed from the iMac
 
 The Swift source under `~/Desktop/projects/DealAnalyzer/Sources/`. Zip that folder (not the DMG) and the deferred calculators can be ported rule for rule instead of inferred.

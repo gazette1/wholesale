@@ -18,3 +18,6 @@ export * from "./schemas";
 export * from "./validate";
 export * from "./runDeal";
 export * from "./buyerMatch";
+export * from "./matchLearning";
+export * from "./compsArv";
+export * from "./project";

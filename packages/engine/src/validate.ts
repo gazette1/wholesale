@@ -1,13 +1,14 @@
 import type { DealInput } from "./schemas";
 import { comparableAverage } from "./dealOffers";
 import { resolveRehab } from "./rehabPlan";
+import { validateProject } from "./project/validateProject";
 
 /**
  * Plain language checks on a DealInput. Errors mean a result is wrong or
  * missing; warnings mean the numbers run but deserve a second look. The wording
  * follows the Mac reference app where it had a message for the same rule.
  */
-export type DealIssue = { level: "error" | "warn"; section: "deal" | "offers" | "rehab" | "financing" | "holding" | "costs" | "rental" | "loan"; message: string };
+export type DealIssue = { level: "error" | "warn"; section: "deal" | "offers" | "rehab" | "financing" | "holding" | "costs" | "rental" | "loan" | "project"; message: string };
 
 /** The workbook cash flow grid stops at week 39, which is 9 months. */
 export const MAX_GRID_HOLD_MONTHS = 9;
@@ -83,5 +84,7 @@ export function validateDeal(input: DealInput): DealIssue[] {
     if (!(l.principal > 0)) add("error", "loan", "Principal must be greater than zero.");
     if (l.payoffAfterPayment != null && l.payoffAfterPayment > l.months) add("warn", "loan", "Payoff payment number is past the end of the loan. The final payment is used.");
   }
+
+  if (input.project) issues.push(...validateProject(input.project, { purchasePrice: a.purchasePrice, asIsValue: a.asIsValue, salePrice: arvInUse, holdMonths: a.holdMonths, rehabEstimate: rehab.estimate }));
   return issues;
 }

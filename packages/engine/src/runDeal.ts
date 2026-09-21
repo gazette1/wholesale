@@ -7,6 +7,8 @@ import { dealOffers, type DealOffersOutput } from "./dealOffers";
 import { loanAnalysis, type LoanAnalysisOutput } from "./loanAnalysis";
 import { resolveRehab, repairOverrideFor, type RehabPlanResult } from "./rehabPlan";
 import { validateDeal, type DealIssue } from "./validate";
+import { runProject, type ProjectOutputs } from "./project/runProject";
+import { projectRentalContext } from "./project/rentalProjection";
 import type { DealInput } from "./schemas";
 import { ENGINE_VERSION } from "./version";
 
@@ -22,6 +24,8 @@ export type DealOutputs = {
   sensitivity: ReturnType<typeof sensitivityGrid> | null;
   /** Which cell of the sensitivity grid is the current case. */
   sensitivityCurrent: { row: number; col: number } | null;
+  /** Null when the deal does not use the project model. Versions saved before it existed have no key at all. */
+  project?: ProjectOutputs | null;
   issues: DealIssue[];
   /** ARV used by every calculator: the comparable average when that switch is on, else the entered value. */
   effectiveArv: number;
@@ -74,7 +78,10 @@ export function runDeal(inputs: DealInput, opts: { sensitivity?: boolean } = {})
     ? sensitivityGrid(acqInput, { key: "arv", values: scaled(effectiveArv, [0.9, 0.95, 1, 1.05, 1.1]) }, { key: "repairCosts", values: repairAxis })
     : null;
   const sensitivityCurrent = sens ? { row: 2, col: lowRepairs ? 0 : 2 } : null;
-  return { acquisitions: acq, wholesale: ws, rehab, rehabPlan, offers, buyAndHold: bh, loan, loanError, sensitivity: sens, sensitivityCurrent, issues: validateDeal(inputs), effectiveArv, engineVersion: ENGINE_VERSION };
+  const project = inputs.project
+    ? runProject(inputs.project, { purchasePrice: inputs.acquisitions.purchasePrice, asIsValue: inputs.acquisitions.asIsValue, salePrice: effectiveArv, holdMonths: inputs.acquisitions.holdMonths, rehabEstimate: rehabPlan.estimate, rental: projectRentalContext(inputs.buyAndHold) })
+    : null;
+  return { acquisitions: acq, wholesale: ws, rehab, rehabPlan, offers, buyAndHold: bh, loan, loanError, sensitivity: sens, sensitivityCurrent, project, issues: validateDeal(inputs), effectiveArv, engineVersion: ENGINE_VERSION };
 }
 
 /** Outputs trimmed for storage: the payment rows are recomputed on load, so they are not saved. */

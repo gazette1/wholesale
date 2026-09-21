@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProjectModelInputSchema } from "./project/schemas";
 
 /** Shared field helpers. Descriptions come from the Definitions sheet where one exists. */
 const usd = (desc: string) => z.number().finite().describe(desc);
@@ -153,6 +154,8 @@ export const DealInputSchema = z.object({
   wholesale: WholesaleInputSchema.optional(),
   buyAndHold: BuyAndHoldInputSchema.optional(),
   amortization: AmortizationInputSchema.optional(),
+  /** Second financing and cash flow model from the Mac app. Absent means off. Never feeds the workbook calculators. */
+  project: ProjectModelInputSchema.optional(),
   flags: AnomalyFlagsSchema.partial().optional(),
 });
 export type DealInput = z.infer<typeof DealInputSchema>;

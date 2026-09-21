@@ -8,11 +8,12 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn, money, percent, multiple } from "@/lib/utils";
+import { ProjectOutputsTab } from "./project-outputs";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from "recharts";
 
-const TABS = ["offer", "flip", "cashflow", "rehab", "rental", "loan", "sensitivity", "compare"] as const;
+const TABS = ["offer", "flip", "cashflow", "rehab", "rental", "loan", "project", "sensitivity", "compare"] as const;
 type Tab = (typeof TABS)[number];
-const LABELS: Record<Tab, string> = { offer: "Offers", flip: "Flip P&L", cashflow: "Cash flow", rehab: "Rehab", rental: "Buy and hold", loan: "Loan", sensitivity: "Sensitivity", compare: "Compare" };
+const LABELS: Record<Tab, string> = { offer: "Offers", flip: "Flip P&L", cashflow: "Cash flow", rehab: "Rehab", rental: "Buy and hold", loan: "Loan", project: "Project model", sensitivity: "Sensitivity", compare: "Compare" };
 const REHAB_SOURCE: Record<string, string> = { checklist: "checklist", manual: "manual estimate", perSqft: "per square foot" };
 
 export function Outputs({ outputs, inputs, siblings, currentId, initialTab, onOpenSection }: { outputs: DealOutputs; inputs: DealInput; siblings: Sibling[]; currentId: string; initialTab?: string; onOpenSection?: (section: string) => void }) {
@@ -44,7 +45,7 @@ export function Outputs({ outputs, inputs, siblings, currentId, initialTab, onOp
             {outputs.issues.map((i, k) => (
               <li key={k} className="flex items-start gap-2">
                 <span className={cn("mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", i.level === "error" ? "bg-bad" : "bg-warn")} />
-                <span className="text-fg-2">{i.message}{onOpenSection ? <button type="button" onClick={() => onOpenSection(i.section)} className="ml-2 text-xs text-brand hover:underline">Open {i.section === "costs" ? "closing costs" : i.section === "rental" ? "buy and hold" : i.section}</button> : null}</span>
+                <span className="text-fg-2">{i.message}{onOpenSection ? <button type="button" onClick={() => onOpenSection(i.section)} className="ml-2 text-xs text-brand hover:underline">Open {i.section === "costs" ? "closing costs" : i.section === "rental" ? "buy and hold" : i.section === "project" ? "project model" : i.section}</button> : null}</span>
               </li>
             ))}
           </ul>
@@ -243,6 +244,8 @@ export function Outputs({ outputs, inputs, siblings, currentId, initialTab, onOp
           </CardBody></Card>
         </div>
       ) : <Card><CardBody><p className="text-[13px] text-fg-3">Add at least one rental unit on the Buy and hold section to see the rental analysis.</p></CardBody></Card>) : null}
+
+      {tab === "project" ? <ProjectOutputsTab project={outputs.project} workbookNetProfit={a.netProfit} onEdit={onOpenSection ? () => onOpenSection("project") : undefined} /> : null}
 
       {tab === "loan" ? (outputs.loan ? (
         <Card>

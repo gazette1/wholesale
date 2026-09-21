@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState, useTransition, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { DealInput } from "@dealcalc/engine";
 import { runDeal, type DealOutputs } from "@/lib/deal-run";
@@ -13,6 +14,7 @@ import { ActionButton } from "@/components/ui/action-form";
 import { Outputs } from "./outputs";
 import { LockedContext, NumField, SectionTitle } from "./fields";
 import { OffersSection, RehabSection, LoanSection, defaultOffers, type Patch } from "./sections";
+import { ProjectSection } from "./project-section";
 import { FieldGuide } from "./field-guide";
 import { cn, money } from "@/lib/utils";
 
@@ -34,7 +36,7 @@ function withAnnualRates(a: DealInput["acquisitions"]): DealInput["acquisitions"
   };
 }
 
-const SECTIONS = [["deal", "Deal"], ["offers", "Offers"], ["rehab", "Rehab"], ["financing", "Financing"], ["holding", "Holding"], ["costs", "Closing costs"], ["rental", "Buy and hold"], ["loan", "Loan"]] as const;
+const SECTIONS = [["deal", "Deal"], ["offers", "Offers"], ["rehab", "Rehab"], ["financing", "Financing"], ["holding", "Holding"], ["costs", "Closing costs"], ["rental", "Buy and hold"], ["loan", "Loan"], ["project", "Project model"]] as const;
 type SectionKey = (typeof SECTIONS)[number][0];
 
 export function Editor({ analysisId, initialInputs, name: initialName, notes: initialNotes, locked, lockedReason, property, report, comps, siblings, initialTab, canDelete, deleteAction }: {
@@ -163,7 +165,12 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
                 </>
               ) : null}
 
-              {section === "offers" ? <OffersSection inputs={inputs} patch={patch} outputs={outputs.ok ? outputs.value : null} sqft={property.sqft ?? 0} reportComps={comps} /> : null}
+              {section === "offers" ? (
+                <>
+                  <p className="mb-3 text-xs text-fg-3">Adjusted comps, a weighted ARV, and a confidence score live in the <Link href={`/properties/${property.id}/comps`} className="text-brand hover:underline">comps workspace</Link>. It can write its comps into this section for you.</p>
+                  <OffersSection inputs={inputs} patch={patch} outputs={outputs.ok ? outputs.value : null} sqft={property.sqft ?? 0} reportComps={comps} />
+                </>
+              ) : null}
               {section === "rehab" ? <RehabSection inputs={inputs} patch={patch} outputs={outputs.ok ? outputs.value : null} sqft={sqft} /> : null}
 
               {section === "financing" ? (
@@ -257,6 +264,7 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
               ) : <p className="text-[13px] text-fg-3">This version was saved without a rental block. Clone a newer analysis to model the rental exit.</p>) : null}
 
               {section === "loan" ? <LoanSection inputs={inputs} patch={patch} /> : null}
+              {section === "project" ? <ProjectSection inputs={inputs} patch={patch} /> : null}
             </CardBody>
           </Card>
           {canDelete ? <ActionButton action={deleteAction as () => Promise<ActionResult>} variant="ghost" size="sm" className="text-bad" confirm="Delete this analysis version for good? A version with a deal package or a record of buyers it was sent to cannot be deleted here; move it to trash from the analyzer list instead.">Delete version</ActionButton> : null}
