@@ -22,7 +22,7 @@ export const profiles = pgTable("profiles", {
   twilioNumber: text("twilio_number"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [
   index("profiles_org_idx").on(t.orgId),
   // A login claims its profile by email, so one email may exist once per org, whatever its letter case.

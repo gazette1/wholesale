@@ -232,3 +232,28 @@ describe("runDeal", () => {
     expect(bad.loanError).toMatch(/greater than zero/);
   });
 });
+
+describe("QA round two", () => {
+  it("keeps the current case inside the sensitivity grid when repairs are small or zero", () => {
+    const d = baseDeal();
+    d.rehab.lines = d.rehab.lines.map((l) => ({ ...l, answer: "No" as const }));
+    const out = runDeal(d, { sensitivity: true });
+    expect(out.acquisitions.repairCosts).toBe(0);
+    expect(out.sensitivityCurrent).toEqual({ row: 2, col: 0 });
+    expect(out.sensitivity!.colAxis.values[0]).toBe(0);
+    expect(out.sensitivity!.cells[2]![0]!.netProfit).toBeCloseTo(out.acquisitions.netProfit, 6);
+    const big = runDeal(baseDeal(), { sensitivity: true });
+    expect(big.sensitivityCurrent).toEqual({ row: 2, col: 2 });
+    expect(big.sensitivity!.cells[2]![2]!.netProfit).toBeCloseTo(big.acquisitions.netProfit, 6);
+  });
+
+  it("warns when the offer is above the max allowable offer and when the automatic spread is negative", () => {
+    const d = baseDeal();
+    d.acquisitions.purchasePrice = 135000;   // MAO is 200000 x 0.7 - 11000 - 10000 = 119000; auto investor price is 129000
+    const warns = validateDeal(d).map((i) => i.message);
+    expect(warns.some((m) => m.includes("16,000 dollars above the max allowable offer"))).toBe(true);
+    expect(warns.some((m) => m.includes("automatic investor buy price is below your offer"))).toBe(true);
+    d.acquisitions.purchasePrice = 119000;
+    expect(validateDeal(d).some((i) => i.message.includes("above the max allowable offer"))).toBe(false);
+  });
+});

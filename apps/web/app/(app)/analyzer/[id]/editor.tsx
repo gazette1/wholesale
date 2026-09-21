@@ -22,8 +22,8 @@ export type Sibling = { id: string; version: number; name: string; status: strin
 const SECTIONS = [["deal", "Deal"], ["offers", "Offers"], ["rehab", "Rehab"], ["financing", "Financing"], ["holding", "Holding"], ["costs", "Closing costs"], ["rental", "Buy and hold"], ["loan", "Loan"]] as const;
 type SectionKey = (typeof SECTIONS)[number][0];
 
-export function Editor({ analysisId, initialInputs, name: initialName, notes: initialNotes, locked, property, report, comps, siblings, initialTab, canDelete, deleteAction }: {
-  analysisId: string; initialInputs: DealInput; name: string; notes: string; locked: boolean; property: PropertyLite; report: ReportLite;
+export function Editor({ analysisId, initialInputs, name: initialName, notes: initialNotes, locked, lockedReason, property, report, comps, siblings, initialTab, canDelete, deleteAction }: {
+  analysisId: string; initialInputs: DealInput; name: string; notes: string; locked: boolean; lockedReason?: string; property: PropertyLite; report: ReportLite;
   comps: { address: string; soldPrice: number | null; sqft: number | null; distanceMi: number | null }[]; siblings: Sibling[]; initialTab?: string; canDelete: boolean; deleteAction: () => Promise<ActionResult | never>;
 }) {
   // Versions saved before the Offers and Rehab source blocks existed get property based defaults, without marking the form dirty.
@@ -56,20 +56,33 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
   }), [patch]);
   const setBh = useCallback((key: string, value: unknown) => patch((prev) => (prev.buyAndHold ? { ...prev, buyAndHold: { ...prev.buyAndHold, [key]: value } } : prev)), [patch]);
 
-  // Warn before leaving with unsaved edits.
+  // Warn before leaving with unsaved edits. beforeunload covers reload and close. In app links (version pills, sidebar,
+  // breadcrumbs, Match buyers, Deal package) never fire it, so a capture phase click handler asks first. The header's
+  // status and clone buttons read the same flag from the document and refuse while it is set.
   useEffect(() => {
+    document.documentElement.dataset.unsavedAnalysis = dirty ? "1" : "";
     if (!dirty) return;
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      if (!window.confirm("You have unsaved changes in this analysis. Leave without saving?")) { e.preventDefault(); e.stopPropagation(); }
+    };
+    window.addEventListener("beforeunload", onUnload);
+    document.addEventListener("click", onClick, true);
+    return () => { window.removeEventListener("beforeunload", onUnload); document.removeEventListener("click", onClick, true); document.documentElement.dataset.unsavedAnalysis = ""; };
   }, [dirty]);
 
   function save() {
     start(async () => {
       const res = await saveAnalysis(analysisId, { inputs: { ...inputs, meta: { ...inputs.meta, name } }, name, notes });
       setFlash(res.ok ? { ok: true, text: "Saved" } : { ok: false, text: res.error });
-      if (res.ok) { setDirty(false); router.refresh(); }
-      setTimeout(() => setFlash(null), 3000);
+      // A success note fades. An error stays until the next save so there is time to read it.
+      if (res.ok) { setDirty(false); router.refresh(); setTimeout(() => setFlash((f) => (f?.ok ? null : f)), 3000); }
     });
   }
 
@@ -80,11 +93,11 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
   return (
     <LockedContext.Provider value={locked}>
       <div className="grid gap-4 xl:grid-cols-5">
-        <div className="xl:col-span-2 space-y-3">
+        <div className="xl:col-span-2 space-y-3 min-w-0">
           <Card>
             <CardHeader
               title={<input value={name} disabled={locked} aria-label="Version name" maxLength={80} onChange={(e) => { setName(e.target.value); setDirty(true); }} className="bg-transparent font-semibold text-[13px] focus:outline-none border-b border-transparent focus:border-border w-full" />}
-              description={locked ? "Locked. Clone to edit." : dirty ? "Unsaved changes" : "All changes recalculate instantly"}
+              description={locked ? lockedReason ?? "Locked. Clone to edit." : dirty ? "Unsaved changes" : "All changes recalculate instantly"}
               actions={<><FieldGuide />{!locked ? <Button variant="primary" size="sm" loading={pending} onClick={save} disabled={!dirty && !pending}>Save</Button> : null}</>}
             />
             <div role="tablist" aria-label="Input sections" className="flex gap-1 px-2 py-1.5 border-b border-border overflow-x-auto scrollbar-thin">
@@ -141,12 +154,12 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
                 <div className="grid grid-cols-2 gap-3">
                   <NumField label="First lien amount" value={acq.firstLienAmount} onChange={(v) => setAcq("firstLienAmount", v)} step={1000} min={0} />
                   <NumField label="First lien points" value={acq.firstPointsRate} onChange={(v) => setAcq("firstPointsRate", v)} pct />
-                  <NumField label="First lien interest (annual, paid at close)" value={acq.firstInterestRate} onChange={(v) => setAcq("firstInterestRate", v)} pct />
-                  <NumField label="First lien interest only (monthly)" value={acq.firstMonthlyInterestOnlyRate} onChange={(v) => setAcq("firstMonthlyInterestOnlyRate", v)} pct hint="14% per year is 1.1667% per month" />
+                  <NumField label="First lien interest (per hold month)" value={acq.firstInterestRate} onChange={(v) => setAcq("firstInterestRate", v)} pct hint="Workbook rule (F21): this percent of the lien is charged once for every hold month. A 12% annual rate is 1 here. Leave it at 0 if you use the interest only field instead, or interest is counted twice." />
+                  <NumField label="First lien interest only (per hold month)" value={acq.firstMonthlyInterestOnlyRate} onChange={(v) => setAcq("firstMonthlyInterestOnlyRate", v)} pct hint="Monthly rate. 14% per year is 1.1667% per month." />
                   <NumField label="Second lien amount" value={acq.secondLienAmount} onChange={(v) => setAcq("secondLienAmount", v)} step={1000} min={0} />
                   <NumField label="Second lien points" value={acq.secondPointsRate} onChange={(v) => setAcq("secondPointsRate", v)} pct />
-                  <NumField label="Second lien interest" value={acq.secondInterestRate} onChange={(v) => setAcq("secondInterestRate", v)} pct />
-                  <NumField label="Second lien interest only (monthly)" value={acq.secondMonthlyInterestOnlyRate} onChange={(v) => setAcq("secondMonthlyInterestOnlyRate", v)} pct />
+                  <NumField label="Second lien interest (charged once)" value={acq.secondInterestRate} onChange={(v) => setAcq("secondInterestRate", v)} pct hint="Workbook rule: this percent of the second lien is charged one time, not per month. The anomaly flag secondInterestTimesHold changes that." />
+                  <NumField label="Second lien interest only (per hold month)" value={acq.secondMonthlyInterestOnlyRate} onChange={(v) => setAcq("secondMonthlyInterestOnlyRate", v)} pct />
                   <NumField label="Misc lien paid" value={acq.miscLienAmountPaid} onChange={(v) => setAcq("miscLienAmountPaid", v)} step={100} />
                   <NumField label="Misc points paid" value={acq.miscPointsPaid} onChange={(v) => setAcq("miscPointsPaid", v)} step={100} />
                   <NumField label="Misc interest paid" value={acq.miscInterestPaid} onChange={(v) => setAcq("miscInterestPaid", v)} step={100} />
@@ -232,7 +245,7 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
               {section === "loan" ? <LoanSection inputs={inputs} patch={patch} /> : null}
             </CardBody>
           </Card>
-          {canDelete ? <form action={deleteAction as unknown as (form: FormData) => void} onSubmit={(e) => { if (!window.confirm("Delete this analysis version for good? Use Move to trash on the analyzer list if you may want it back.")) e.preventDefault(); }}><Button type="submit" variant="ghost" size="sm" className="text-bad">Delete version</Button></form> : null}
+          {canDelete ? <form action={deleteAction as unknown as (form: FormData) => void} onSubmit={(e) => { if (!window.confirm("Delete this analysis version for good? A version with a deal package or a record of buyers it was sent to cannot be deleted here; move it to trash from the analyzer list instead.")) e.preventDefault(); }}><Button type="submit" variant="ghost" size="sm" className="text-bad">Delete version</Button></form> : null}
         </div>
 
         <div className="xl:col-span-3 min-w-0">

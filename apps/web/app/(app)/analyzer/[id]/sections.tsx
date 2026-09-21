@@ -75,10 +75,10 @@ export function OffersSection({ inputs, patch, outputs, sqft, reportComps }: { i
               </div>
               {c ? (
                 <div className="grid grid-cols-2 gap-3">
-                  <NumField label="Outcome for the seller" value={c.outcome} step={1000} onChange={(v) => setCase(key, (x) => ({ ...x, outcome: v }))} />
-                  <NumField label="Probability of sale" pct value={c.probability} min={0} max={100} onChange={(v) => setCase(key, (x) => ({ ...x, probability: Math.min(1, Math.max(0, v)) }))} />
-                  <NumField label="Months to close" plain value={c.months} step={0.5} min={0} onChange={(v) => setCase(key, (x) => ({ ...x, months: v }))} />
-                  <NumField label="Effort (1 low to 10 high)" plain value={c.effort} step={1} min={0} max={10} onChange={(v) => setCase(key, (x) => ({ ...x, effort: v }))} />
+                  <NumField label="Outcome for the seller" ariaLabel={`${title}: outcome for the seller`} value={c.outcome} step={1000} onChange={(v) => setCase(key, (x) => ({ ...x, outcome: v }))} />
+                  <NumField label="Probability of sale" ariaLabel={`${title}: probability of sale`} pct value={c.probability} min={0} max={100} onChange={(v) => setCase(key, (x) => ({ ...x, probability: Math.min(1, Math.max(0, v)) }))} />
+                  <NumField label="Months to close" ariaLabel={`${title}: months to close`} plain value={c.months} step={0.5} min={0} onChange={(v) => setCase(key, (x) => ({ ...x, months: v }))} />
+                  <NumField label="Effort (1 low to 10 high)" ariaLabel={`${title}: effort`} plain value={c.effort} step={1} min={0} max={10} onChange={(v) => setCase(key, (x) => ({ ...x, effort: v }))} />
                 </div>
               ) : null}
             </div>
@@ -208,9 +208,9 @@ export function LoanSection({ inputs, patch }: { inputs: DealInput; patch: Patch
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Principal" value={loan.principal} step={1000} min={0} onChange={(v) => set({ principal: v })} />
         <NumField label="Annual interest rate" pct value={loan.annualRate} min={0} max={50} onChange={(v) => set({ annualRate: v })} />
-        <NumField label="Term in months" plain value={loan.months} step={12} min={1} max={600} onChange={(v) => set({ months: Math.round(v) })} hint="1 to 600" />
-        <Field label="First payment date"><Input type="date" disabled={locked} value={loan.firstPaymentDate.slice(0, 10)} onChange={(e) => { if (e.target.value) set({ firstPaymentDate: e.target.value }); }} /></Field>
-        <NumField label="Payoff after payment number" plain value={loan.payoffAfterPayment ?? null} step={1} min={1} placeholder="none" onClear={() => set({ payoffAfterPayment: null })} onChange={(v) => set({ payoffAfterPayment: v >= 1 ? Math.round(v) : null })} hint="Shows the balance left after this many payments" />
+        <NumField label="Term in months" integer plain value={loan.months} step={12} min={1} max={600} onChange={(v) => set({ months: Math.round(v) })} hint="1 to 600" />
+        <Field label="First payment date"><Input type="date" aria-label="First payment date" disabled={locked} value={loan.firstPaymentDate.slice(0, 10)} onChange={(e) => { if (e.target.value) set({ firstPaymentDate: e.target.value }); }} /></Field>
+        <NumField label="Payoff after payment number" integer plain value={loan.payoffAfterPayment ?? null} step={1} min={1} placeholder="none" onClear={() => set({ payoffAfterPayment: null })} onChange={(v) => set({ payoffAfterPayment: v >= 1 ? Math.round(v) : null })} hint="Shows the balance left after this many payments" />
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="ghost" size="sm" disabled={locked || !(inputs.acquisitions.firstLienAmount > 0)} onClick={() => set({ principal: inputs.acquisitions.firstLienAmount })}>Use first lien ({money(inputs.acquisitions.firstLienAmount)})</Button>

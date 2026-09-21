@@ -54,6 +54,17 @@ export function validateDeal(input: DealInput): DealIssue[] {
     add("warn", "rehab", "The checklist total and the estimate in use differ by more than 25 percent.");
   }
 
+  // Offer against the numbers the Offers tab shows, using whichever repair estimate is in use.
+  const avgArv = o?.useComparableAverage ? comparableAverage(o.comparables) : null;
+  const arvInUse = avgArv ?? a.arv;
+  const fee = Math.abs(w?.assignmentFee ?? a.assignmentFee);
+  if (arvInUse > 0 && a.purchasePrice > 0 && factor >= 0 && factor <= 1) {
+    const mao = arvInUse * factor - rehab.estimate - fee;
+    if (a.purchasePrice > mao + 0.5) add("warn", "deal", `The proposed offer is ${Math.round(a.purchasePrice - mao).toLocaleString("en-US")} dollars above the max allowable offer.`);
+    const autoInvestorPrice = arvInUse * factor - rehab.estimate;
+    if (w?.investorBuyPrice == null && autoInvestorPrice < a.purchasePrice) add("warn", "deal", "The automatic investor buy price is below your offer, so the spread is negative. Lower the offer, recheck repairs, or type the price an investor has agreed to.");
+  }
+
   const loans = a.firstLienAmount + a.secondLienAmount;
   if (a.firstLienAmount < 0 || a.secondLienAmount < 0) add("error", "financing", "Loan amounts must be zero or more.");
   if (loans > a.purchasePrice + rehab.estimate + 0.005) add("warn", "financing", "Combined loan amounts exceed the purchase price plus the rehab estimate.");

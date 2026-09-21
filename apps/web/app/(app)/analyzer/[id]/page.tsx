@@ -9,6 +9,7 @@ import { cloneAnalysis, deleteAnalysis, setAnalysisStatus, setAnalysisLibrarySta
 import { Alert } from "@/components/ui/misc";
 import { ActionButton } from "@/components/ui/action-form";
 import { Editor } from "./editor";
+import { AnalysisHeaderActions } from "./header-actions";
 import { money } from "@/lib/utils";
 import { SubmitOnce } from "@/components/ui/action-form";
 
@@ -34,11 +35,7 @@ export default async function AnalysisPage({ params, searchParams }: { params: P
         actions={writable && !trashed ? (
           <>
             {siblings.length > 1 ? <LinkButton href={`/analyzer/${id}?tab=compare`} variant="outline">Compare {siblings.length} versions</LinkButton> : null}
-            <form action={cloneAnalysis.bind(null, id)}><SubmitOnce variant="outline">Clone</SubmitOnce></form>
-            {analysis.status === "draft" ? <ActionButton action={setAnalysisStatus.bind(null, id, "reviewing")} size="md">Send to review</ActionButton> : null}
-            {analysis.status !== "approved_for_offer" ? <ActionButton action={setAnalysisStatus.bind(null, id, "approved_for_offer")} variant="primary" size="md">Approve for offer</ActionButton> : null}
-            {analysis.status !== "rejected" ? <ActionButton action={setAnalysisStatus.bind(null, id, "rejected")} variant="ghost" size="md">Reject</ActionButton> : null}
-            {locked ? <ActionButton action={setAnalysisStatus.bind(null, id, "draft")} variant="ghost" size="md">Reopen</ActionButton> : null}
+            <AnalysisHeaderActions analysisId={id} status={analysis.status} locked={locked} />
             <LinkButton href={`/buyers/match/${id}`} variant="outline">Match buyers</LinkButton>
             <LinkButton href={`/packages/new?analysis=${id}`} variant="default">Deal package</LinkButton>
           </>
@@ -60,6 +57,7 @@ export default async function AnalysisPage({ params, searchParams }: { params: P
         name={analysis.name}
         notes={analysis.notes ?? ""}
         locked={locked || !writable}
+        lockedReason={trashed ? "In the trash. Restore it to edit." : !writable ? "Your role can view analyses but not edit them." : undefined}
         property={{ id: property.id, sqft: property.sqft, condition: property.condition, occupancy: property.occupancy, propertyType: property.propertyType, state: property.state, county: property.county, postalCode: property.postalCode }}
         report={detail.report ? { avm: detail.report.normalized.valuation.avm ?? null, arv: detail.report.normalized.arv.estimate ?? null, rent: detail.report.normalized.valuation.rentEstimate ?? null, payoff: detail.report.normalized.mortgages.reduce((a, m) => a + (m.estimatedBalance ?? 0), 0), taxAmount: detail.report.normalized.tax.taxAmount ?? null } : null}
         comps={detail.comps.map((c) => ({ address: c.address, soldPrice: c.soldPrice ? Number(c.soldPrice) : null, sqft: c.sqft, distanceMi: c.distanceMi ? Number(c.distanceMi) : null }))}

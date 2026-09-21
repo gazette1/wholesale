@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DealInput } from "@dealcalc/engine";
 import type { DealOutputs } from "@/lib/deal-run";
 import type { Sibling } from "./editor";
@@ -17,6 +17,8 @@ const REHAB_SOURCE: Record<string, string> = { checklist: "checklist", manual: "
 
 export function Outputs({ outputs, inputs, siblings, currentId, initialTab, onOpenSection }: { outputs: DealOutputs; inputs: DealInput; siblings: Sibling[]; currentId: string; initialTab?: string; onOpenSection?: (section: string) => void }) {
   const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(initialTab ?? "") ? (initialTab as Tab) : "offer");
+  // The header's "Compare versions" link changes ?tab= while this component stays mounted.
+  useEffect(() => { if ((TABS as readonly string[]).includes(initialTab ?? "")) setTab(initialTab as Tab); }, [initialTab]);
   const [schedule, setSchedule] = useState<"delayed" | "upfront">("delayed");
   const [showAllPayments, setShowAllPayments] = useState(false);
   const a = outputs.acquisitions;
@@ -204,7 +206,8 @@ export function Outputs({ outputs, inputs, siblings, currentId, initialTab, onOp
       {tab === "rental" ? (outputs.buyAndHold ? (
         <div className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
-            {([["Current rents", outputs.buyAndHold.current, outputs.buyAndHold.dcr.actual, outputs.buyAndHold.dcr.actualQualifies], ["Market rents", outputs.buyAndHold.market, outputs.buyAndHold.dcr.proForma, outputs.buyAndHold.dcr.proFormaQualifies]] as const).map(([title, c, d, passes]) => (
+            {/* Workbook naming is counterintuitive: its "pro forma" DCR block uses current rents and its "actual" block uses market rents. */}
+            {([["Current rents", outputs.buyAndHold.current, outputs.buyAndHold.dcr.proForma, outputs.buyAndHold.dcr.proFormaQualifies], ["Market rents", outputs.buyAndHold.market, outputs.buyAndHold.dcr.actual, outputs.buyAndHold.dcr.actualQualifies]] as const).map(([title, c, d, passes]) => (
               <Card key={title}><CardHeader title={title} actions={<Badge tone={passes ? "good" : "bad"}>DCR {passes ? "passes" : "fails"}</Badge>} /><CardBody>
                 <Stat label="Gross rent per month" value={money(c.grossRents)} />
                 <Stat label="Operating expenses" value={`(${money(c.totalOperatingExpenses)})`} />
@@ -213,7 +216,7 @@ export function Outputs({ outputs, inputs, siblings, currentId, initialTab, onOp
                 <Stat label="Monthly cash flow" value={money(c.monthlyNet)} tone={c.monthlyNet > 0 ? "good" : "bad"} />
                 <Stat label="Cap rate" value={percent(c.capRate, 2)} />
                 <Stat label="Cash on cash" value={percent(c.annualizedRoi)} />
-                <Stat label="DCR" value={Number.isFinite(d.dcr) ? d.dcr.toFixed(2) : "n/a"} tone={passes ? "good" : "bad"} hint={`Required ${outputs.buyAndHold!.dcr.required}`} />
+                <Stat label="DCR" value={Number.isFinite(d.dcr) ? d.dcr.toFixed(2) : "n/a"} tone={passes ? "good" : "bad"} hint={`Annual NOI ${money(d.noi)} over annual debt service ${money(d.mortgage)}. Required ${outputs.buyAndHold!.dcr.required}.`} />
               </CardBody></Card>
             ))}
           </div>
@@ -271,12 +274,12 @@ export function Outputs({ outputs, inputs, siblings, currentId, initialTab, onOp
 
       {tab === "sensitivity" && outputs.sensitivity ? (
         <Card>
-          <CardHeader title="Sensitivity: flip net profit" description="Rows change ARV, columns change repairs. Middle cell is the current case." />
+          <CardHeader title="Sensitivity: flip net profit" description="Rows change ARV, columns change repairs. The highlighted cell is the current case." />
           <CardBody className="p-0">
             <Table>
               <THead><tr><TH>ARV \ Repairs</TH>{outputs.sensitivity.colAxis.values.map((v) => <TH key={v} right>{money(v)}</TH>)}</tr></THead>
               <TBody>{outputs.sensitivity.cells.map((row, i) => (
-                <TR key={i}><TD className="font-medium">{money(outputs.sensitivity!.rowAxis.values[i])}</TD>{row.map((c, j) => <TD key={j} right className={cn(c.netProfit > 0 ? "text-good" : "text-bad", i === 2 && j === 2 && "bg-brand-soft font-semibold")}>{money(c.netProfit)}</TD>)}</TR>
+                <TR key={i}><TD className="font-medium">{money(outputs.sensitivity!.rowAxis.values[i])}</TD>{row.map((c, j) => <TD key={j} right className={cn(c.netProfit > 0 ? "text-good" : "text-bad", i === (outputs.sensitivityCurrent?.row ?? 2) && j === (outputs.sensitivityCurrent?.col ?? 2) && "bg-brand-soft font-semibold")}>{money(c.netProfit)}</TD>)}</TR>
               ))}</TBody>
             </Table>
           </CardBody>

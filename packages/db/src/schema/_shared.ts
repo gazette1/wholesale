@@ -6,7 +6,8 @@ export const base = {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: uuid("org_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Set by the ORM on every update as well as by the Supabase trigger, so PGlite and hosted Postgres agree.
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 };
 
 export const roleEnum = pgEnum("role", ["admin", "acquisitions", "dispositions", "viewer"]);

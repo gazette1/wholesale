@@ -20,6 +20,8 @@ export type DealOutputs = {
   loan: LoanAnalysisOutput | null;
   loanError: string | null;
   sensitivity: ReturnType<typeof sensitivityGrid> | null;
+  /** Which cell of the sensitivity grid is the current case. */
+  sensitivityCurrent: { row: number; col: number } | null;
   issues: DealIssue[];
   /** ARV used by every calculator: the comparable average when that switch is on, else the entered value. */
   effectiveArv: number;
@@ -63,10 +65,16 @@ export function runDeal(inputs: DealInput, opts: { sensitivity?: boolean } = {})
     try { loan = loanAnalysis(inputs.loan); } catch (e) { loanError = e instanceof Error ? e.message : "The loan payment could not be calculated for these inputs."; }
   }
 
+  // The current case must sit in the grid. Percent steps around a tiny repair number collapse to the same value,
+  // so under 5,000 the repair axis steps up from the current figure in dollars instead and the current case is column 0.
+  const repairs = acq.repairCosts;
+  const lowRepairs = repairs < 5000;
+  const repairAxis = lowRepairs ? [0, 2500, 5000, 10000, 20000].map((add) => repairs + add) : scaled(repairs, [0.8, 0.9, 1, 1.1, 1.25]);
   const sens = opts.sensitivity
-    ? sensitivityGrid(acqInput, { key: "arv", values: scaled(effectiveArv, [0.9, 0.95, 1, 1.05, 1.1]) }, { key: "repairCosts", values: scaled(Math.max(acq.repairCosts, 1000), [0.8, 0.9, 1, 1.1, 1.25]) })
+    ? sensitivityGrid(acqInput, { key: "arv", values: scaled(effectiveArv, [0.9, 0.95, 1, 1.05, 1.1]) }, { key: "repairCosts", values: repairAxis })
     : null;
-  return { acquisitions: acq, wholesale: ws, rehab, rehabPlan, offers, buyAndHold: bh, loan, loanError, sensitivity: sens, issues: validateDeal(inputs), effectiveArv, engineVersion: ENGINE_VERSION };
+  const sensitivityCurrent = sens ? { row: 2, col: lowRepairs ? 0 : 2 } : null;
+  return { acquisitions: acq, wholesale: ws, rehab, rehabPlan, offers, buyAndHold: bh, loan, loanError, sensitivity: sens, sensitivityCurrent, issues: validateDeal(inputs), effectiveArv, engineVersion: ENGINE_VERSION };
 }
 
 /** Outputs trimmed for storage: the payment rows are recomputed on load, so they are not saved. */

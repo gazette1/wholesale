@@ -11,6 +11,10 @@ export const useLocked = () => useContext(LockedContext);
 type NumProps = {
   label: string; value: number | null | undefined; onChange: (v: number) => void; onClear?: () => void;
   step?: number; hint?: string; pct?: boolean; plain?: boolean; min?: number; max?: number; disabled?: boolean; placeholder?: string; className?: string;
+  /** The stored value is a whole number. Typing 12.7 is left alone until the field loses focus. */
+  integer?: boolean;
+  /** Overrides the accessible name when two fields on screen share a label. */
+  ariaLabel?: string;
 };
 
 /**
@@ -19,14 +23,14 @@ type NumProps = {
  * fields show 7 for 0.07. Defined at module level on purpose: a component
  * declared inside another component's render remounts on every keystroke.
  */
-export function NumField({ label, value, onChange, onClear, step = 1, hint, pct, plain, min, max, disabled, placeholder, className }: NumProps) {
+export function NumField({ label, value, onChange, onClear, step = 1, hint, pct, plain, min, max, disabled, placeholder, className, integer, ariaLabel }: NumProps) {
   const locked = useLocked();
   const shown = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? "" : String(pct ? Number((v * 100).toFixed(4)) : v));
   const [text, setText] = useState(shown(value));
   const focused = useRef(false);
   useEffect(() => {
     // Follow outside changes (report buttons, linked fields) unless the user is mid edit on the same number.
-    const parsed = text === "" ? null : Number(text);
+    const parsed = text === "" ? null : integer ? Math.round(Number(text)) : Number(text);
     const current = value == null ? null : pct ? Number((value * 100).toFixed(4)) : value;
     if (!focused.current || parsed !== current) setText(shown(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -36,7 +40,7 @@ export function NumField({ label, value, onChange, onClear, step = 1, hint, pct,
       <div className="relative">
         {pct || plain ? null : <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-fg-3">$</span>}
         <Input
-          type="number" inputMode="decimal" step={pct ? 0.01 : step} min={min} max={max} disabled={locked || disabled} placeholder={placeholder} value={text} aria-label={label}
+          type="number" inputMode="decimal" step={pct ? 0.01 : step} min={min} max={max} disabled={locked || disabled} placeholder={placeholder} value={text} aria-label={ariaLabel ?? label}
           onFocus={() => { focused.current = true; }}
           onBlur={() => { focused.current = false; setText(shown(value)); }}
           onChange={(e) => {

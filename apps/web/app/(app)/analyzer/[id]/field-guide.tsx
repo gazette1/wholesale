@@ -14,7 +14,7 @@ export function FieldGuide() {
     return needle ? GLOSSARY.filter((g) => g.name.toLowerCase().includes(needle) || g.definition.toLowerCase().includes(needle) || g.section.toLowerCase().includes(needle)) : GLOSSARY;
   }, [q]);
   return (
-    <Dialog>
+    <Dialog onOpenChange={(open) => { if (!open) setQ(""); }}>
       <DialogTrigger asChild><Button type="button" variant="ghost" size="sm"><BookOpen className="h-3.5 w-3.5" />Field guide</Button></DialogTrigger>
       <DialogContent title="Field guide" description="Workbook definitions. The labeled inputs and the calculation rules in this app govern its results." wide>
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search terms, such as points or holding" aria-label="Search the field guide" autoFocus />
