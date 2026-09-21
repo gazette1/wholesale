@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSession, can } from "@/lib/auth";
-import { packageData } from "@/lib/services/packages";
+import { packageData, SECTION_LABELS } from "@/lib/services/packages";
 import { updatePackageSections } from "@/lib/actions/packages";
 import { ActionForm } from "@/components/ui/action-form";
 import { PageHeader } from "@/components/ui/misc";
@@ -36,7 +36,7 @@ export default async function PackagePreviewPage({ params }: { params: Promise<{
             <CardBody>
               {can(session, "buyer:write") ? (
                 <ActionForm action={updatePackageSections.bind(null, pkg.id)} submitLabel="Apply" variant="outline" size="sm" className="space-y-2">
-                  {Object.entries(data.sections).map(([k, v]) => <label key={k} className="flex items-center gap-2 text-[13px] capitalize"><input type="checkbox" name={`section_${k}`} defaultChecked={v} className="h-4 w-4" />{k}</label>)}
+                  {Object.entries(data.sections).map(([k, v]) => <label key={k} className="flex items-center gap-2 text-[13px]"><input type="checkbox" name={`section_${k}`} defaultChecked={v} className="h-4 w-4" />{SECTION_LABELS[k as keyof typeof SECTION_LABELS] ?? k}</label>)}
                   <Field label="Share link expires in (days, 0 for never)"><Input name="expiresDays" type="number" defaultValue={pkg.expiresAt ? Math.max(1, Math.round((pkg.expiresAt.getTime() - Date.now()) / 86_400_000)) : 0} /></Field>
                 </ActionForm>
               ) : null}

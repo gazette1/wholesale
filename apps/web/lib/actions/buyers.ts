@@ -8,6 +8,7 @@ import { getDb } from "../db";
 import { requireSession, requireCan } from "../auth";
 import { audit } from "../audit";
 import { toNumber, toOptionalNumber } from "../utils";
+import { emitEvent } from "../services/integrations";
 import type { ActionResult } from "./leads";
 
 function list(v: FormDataEntryValue | null): string[] {
@@ -28,6 +29,7 @@ export async function createBuyer(_prev: ActionResult | null, form: FormData): P
     }).returning();
     await db.insert(buyerCriteria).values({ orgId: session.orgId, buyerId: buyer!.id, states: list(form.get("states")).map((s) => s.toUpperCase()) });
     await audit(session, { entityType: "buyer", entityId: buyer!.id, action: "create" });
+    await emitEvent(session.orgId, "buyer.created", { buyerId: buyer!.id, firstName: buyer!.firstName, lastName: buyer!.lastName, company: buyer!.company, phone: buyer!.phones[0]?.number ?? null, email: buyer!.emails[0]?.address ?? null, source: buyer!.source, via: "app" });
     revalidatePath("/buyers");
     return { ok: true, id: buyer!.id };
   } catch (err) {

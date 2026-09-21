@@ -1,7 +1,7 @@
 import { and, desc, eq, max } from "drizzle-orm";
-import { dealAnalyses, rehabLineItems, costDefaults, properties, propertyReports, leads } from "@dealcalc/db";
+import { dealAnalyses, rehabLineItems, costDefaults, properties, propertyReports, leads, comps } from "@dealcalc/db";
 import { ENGINE_VERSION, DealInputSchema, type DealInput, type RehabLine } from "@dealcalc/engine";
-import { runDeal, type DealOutputs } from "../deal-run";
+import { runDeal, outputsForStorage, type DealOutputs } from "../deal-run";
 export { runDeal, type DealOutputs };
 import { REHAB_CHECKLIST } from "@dealcalc/db/seed";
 import { getDb } from "../db";
@@ -9,10 +9,11 @@ import { getDb } from "../db";
 /** Starting inputs for a new analysis: property facts, latest report, org unit costs, workbook style defaults. */
 export async function buildDefaultInputs(orgId: string, propertyId: string): Promise<DealInput> {
   const db = await getDb();
-  const [property, report, costs] = await Promise.all([
+  const [property, report, costs, compRows] = await Promise.all([
     db.query.properties.findFirst({ where: and(eq(properties.id, propertyId), eq(properties.orgId, orgId)) }),
     db.query.propertyReports.findFirst({ where: eq(propertyReports.propertyId, propertyId), orderBy: desc(propertyReports.fetchedAt) }),
     db.select().from(costDefaults).where(eq(costDefaults.orgId, orgId)).orderBy(costDefaults.rowNumber),
+    db.select().from(comps).where(and(eq(comps.propertyId, propertyId), eq(comps.orgId, orgId), eq(comps.included, true))).orderBy(comps.distanceMi).limit(6),
   ]);
   if (!property) throw new Error("Property not found.");
   const sqft = property.sqft ?? report?.normalized.characteristics.sqft ?? 1400;
@@ -28,8 +29,16 @@ export async function buildDefaultInputs(orgId: string, propertyId: string): Pro
   const repairEstimate = 0;
   const purchasePrice = lead?.askingPrice ? Number(lead.askingPrice) : Math.round(arv * 0.7 - repairEstimate - 10000);
   const payoff = report?.normalized.mortgages.reduce((a, m) => a + (m.estimatedBalance ?? 0), 0) ?? 0;
+  const comparables = compRows.filter((c) => Number(c.soldPrice) > 0).map((c) => ({ label: c.address.slice(0, 120), value: Number(c.soldPrice) }));
+  // First payment falls on the first of the month after next, the usual lag after closing.
+  const now = new Date();
+  const firstPayment = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1)).toISOString().slice(0, 10);
   return {
-    meta: { name: "Base case", address: `${property.addressLine1}, ${property.city}, ${property.state} ${property.postalCode}` },
+    offers: { comparables, useComparableAverage: false, squareFeet: sqft, perSqft: { light: 15, medium: 30, full: 50 }, sellerCurrent: null, sellerDesired: null },
+    rehabPlan: { source: "checklist", perSqftRate: 30, squareFeet: sqft },
+    progress: [],
+    loan: { principal: Math.max(1000, Math.round(purchasePrice * 0.8)), annualRate: 0.075, months: 360, firstPaymentDate: firstPayment, payoffAfterPayment: 60 },
+    meta: { name: "Base case", strategy: "wholesale", address: `${property.addressLine1}, ${property.city}, ${property.state} ${property.postalCode}` },
     rehab: { address: property.addressLine1, lines },
     acquisitions: {
       holdMonths: 4, asIsValue: asIs, purchasePrice, arv, repairCosts: repairEstimate, assignmentFee: -10000,
@@ -65,9 +74,9 @@ export async function persistAnalysis(id: string, orgId: string, inputs: DealInp
   const parsed = DealInputSchema.parse(inputs);
   const out = runDeal(parsed, { sensitivity: true });
   await db.update(dealAnalyses).set({
-    inputs: parsed, outputs: out as unknown as Record<string, unknown>, engineVersion: ENGINE_VERSION,
+    inputs: parsed, outputs: outputsForStorage(out) as unknown as Record<string, unknown>, engineVersion: ENGINE_VERSION,
     netProfit: out.acquisitions.netProfit.toFixed(2), maxAllowableOffer: out.wholesale.maxAllowableOffer.toFixed(2), spread: out.wholesale.spread.toFixed(2),
-    arv: String(parsed.acquisitions.arv), purchasePrice: String(parsed.acquisitions.purchasePrice),
+    arv: String(out.effectiveArv), strategy: parsed.meta.strategy ?? "wholesale", purchasePrice: String(parsed.acquisitions.purchasePrice),
   }).where(eq(dealAnalyses.id, id));
   await db.delete(rehabLineItems).where(eq(rehabLineItems.analysisId, id));
   if (parsed.rehab.lines.length) {

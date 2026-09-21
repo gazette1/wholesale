@@ -14,11 +14,8 @@ export function ensureDevDatabase(): Promise<void> {
   store.__dealcalcDevReady = (async () => {
     if (dbKind() !== "pglite") return;
     const conn = db();
-    const exists = await conn.execute(sql`select to_regclass('public.orgs') as t`);
-    const row = (exists as any).rows?.[0] ?? (exists as any)[0];
-    if (!row?.t) {
-      await migrate(conn);
-    }
+    // Applies only the files that have not run yet, so an older local database upgrades in place.
+    await migrate(conn);
     const orgCount = await conn.execute(sql`select count(*)::int as n from orgs`);
     const n = ((orgCount as any).rows?.[0] ?? (orgCount as any)[0])?.n ?? 0;
     if (Number(n) === 0) {

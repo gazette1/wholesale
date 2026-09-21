@@ -3,7 +3,7 @@
  * Deterministic: the same seed value produces the same rows every run.
  * Runs on PGlite (tests) and on Supabase (pnpm --filter @dealcalc/db seed).
  */
-import { acquisitions, wholesale, rehabEstimator, ENGINE_VERSION, type AcquisitionsInput, type RehabLine, type DealInput } from "@dealcalc/engine";
+import { acquisitions, wholesale, rehabEstimator, runDeal, outputsForStorage, ENGINE_VERSION, type AcquisitionsInput, type RehabLine, type DealInput } from "@dealcalc/engine";
 import type { Db } from "../client";
 import {
   orgs, profiles, pipelineStages, leadSources, tags, properties, contacts, propertyContacts, leads, leadTags,
@@ -223,9 +223,17 @@ export async function seed(db: Db, options: { seed?: number; adminEmail?: string
       const out = acquisitions(acq);
       const ws = wholesale({ arv, repairCosts: repairTotal, assignmentFee: 10000, purchasePrice, investorBuyPrice: Math.round(arv * 0.7 - repairTotal), closingCosts: 1500 });
       const inputs: DealInput = { meta: { name: "Base case", address: `${property!.addressLine1}, ${property!.city} MD` }, rehab: { lines: repairLines }, acquisitions: { ...acq, rehab: undefined, repairCosts: repairTotal }, wholesale: { arv, repairCosts: repairTotal, assignmentFee: 10000, purchasePrice, investorBuyPrice: ws.investorBuyPrice, closingCosts: 1500 } };
+      // Strategy cycles by lead index so the seed stays deterministic without drawing more random numbers.
+      const strategy = (["wholesale", "wholesale", "flip", "rental"] as const)[i % 4]!;
+      inputs.meta.strategy = strategy;
+      inputs.offers = { comparables: [], useComparableAverage: false, squareFeet: sqft, perSqft: { light: 15, medium: 30, full: 50 }, sellerCurrent: null, sellerDesired: null };
+      inputs.rehabPlan = { source: "checklist", perSqftRate: 30, squareFeet: sqft };
+      inputs.progress = [];
+      inputs.loan = { principal: Math.max(1000, Math.round(purchasePrice * 0.8)), annualRate: 0.075, months: 360, firstPaymentDate: "2026-11-01", payoffAfterPayment: 60 };
+      const full = outputsForStorage(runDeal(inputs, { sensitivity: true }));
       const [analysis] = await db.insert(dealAnalyses).values({
-        orgId, propertyId: property!.id, leadId: lead!.id, version: 1, name: "Base case", status: stageKey === "qualified" ? "reviewing" : "approved_for_offer",
-        inputs, outputs: { acquisitions: out, wholesale: ws }, engineVersion: ENGINE_VERSION, isPrimary: true, createdBy: lead!.assignedTo,
+        orgId, propertyId: property!.id, leadId: lead!.id, version: 1, name: "Base case", strategy, status: stageKey === "qualified" ? "reviewing" : "approved_for_offer",
+        inputs, outputs: full as unknown as Record<string, unknown>, engineVersion: ENGINE_VERSION, isPrimary: true, createdBy: lead!.assignedTo,
         netProfit: out.netProfit.toFixed(2), maxAllowableOffer: ws.maxAllowableOffer.toFixed(2), spread: ws.spread.toFixed(2), arv: String(arv), purchasePrice: String(purchasePrice),
       }).returning();
       analysisIds.push(analysis!.id);

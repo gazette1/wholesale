@@ -8,6 +8,13 @@
       "when": 1789682032937,
       "tag": "0000_crm_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789998376933,
+      "tag": "0002_library_and_integrations",
+      "breakpoints": true
     }
   ]
 }

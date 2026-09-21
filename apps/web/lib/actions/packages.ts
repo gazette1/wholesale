@@ -8,6 +8,7 @@ import { getDb } from "../db";
 import { requireSession, requireCan } from "../auth";
 import { audit } from "../audit";
 import { DEFAULT_SECTIONS } from "../services/packages";
+import { emitEvent } from "../services/integrations";
 import type { ActionResult } from "./leads";
 
 export async function createPackage(analysisId: string): Promise<never> {
@@ -19,6 +20,7 @@ export async function createPackage(analysisId: string): Promise<never> {
   const last = await db.query.dealPackages.findFirst({ where: eq(dealPackages.analysisId, analysisId), orderBy: desc(dealPackages.version) });
   const [pkg] = await db.insert(dealPackages).values({ orgId: session.orgId, analysisId, version: (last?.version ?? 0) + 1, shareToken: randomBytes(18).toString("base64url"), sections: DEFAULT_SECTIONS, generatedBy: session.profileId, expiresAt: new Date(Date.now() + 30 * 86_400_000) }).returning();
   await audit(session, { entityType: "package", entityId: pkg!.id, action: "create", after: { analysisId } });
+  await emitEvent(session.orgId, "package.created", { packageId: pkg!.id, analysisId, propertyId: analysis.propertyId, leadId: analysis.leadId, version: pkg!.version, expiresAt: pkg!.expiresAt });
   redirect(`/packages/${pkg!.id}/preview`);
 }
 

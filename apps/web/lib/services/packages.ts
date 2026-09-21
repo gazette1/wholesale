@@ -5,7 +5,11 @@ import type { PackageData } from "../pdf/package-pdf";
 import type { DealOutputs } from "../deal-run";
 import { shortDate } from "../utils";
 
-export const DEFAULT_SECTIONS = { financials: true, comps: true, report: true, rehab: true, notes: true };
+/** Analysis notes are internal working notes, so a new package leaves them out until someone turns them on. */
+export const DEFAULT_SECTIONS = { financials: true, comps: true, report: true, rehab: true, notes: false };
+export const SECTION_LABELS: Record<keyof typeof DEFAULT_SECTIONS, string> = {
+  financials: "Deal numbers for the buyer", comps: "Comparable sales", report: "Property facts", rehab: "Repair scope", notes: "Analysis notes (internal, read them before sharing)",
+};
 
 /** Everything the PDF and the preview page need, resolved from one package row. */
 export async function packageData(pkgId: string, opts: { byToken?: boolean } = {}): Promise<{ pkg: typeof dealPackages.$inferSelect; data: PackageData; orgId: string } | null> {
@@ -32,7 +36,7 @@ export async function packageData(pkgId: string, opts: { byToken?: boolean } = {
     summary: property.notes,
     notes: analysis.notes,
     outputs,
-    inputs: { arv: inputs.acquisitions.arv, purchasePrice: inputs.acquisitions.purchasePrice, repairCosts: outputs.acquisitions?.repairCosts ?? 0, assignmentFee: inputs.wholesale?.assignmentFee ?? Math.abs(inputs.acquisitions.assignmentFee), investorBuyPrice: outputs.wholesale?.investorBuyPrice ?? 0, holdMonths: inputs.acquisitions.holdMonths },
+    inputs: { arv: outputs.effectiveArv ?? inputs.acquisitions.arv, purchasePrice: inputs.acquisitions.purchasePrice, repairCosts: outputs.acquisitions?.repairCosts ?? 0, assignmentFee: inputs.wholesale?.assignmentFee ?? Math.abs(inputs.acquisitions.assignmentFee), investorBuyPrice: outputs.wholesale?.investorBuyPrice ?? 0, holdMonths: inputs.acquisitions.holdMonths },
     report: report ? { avm: report.normalized.valuation.avm, owner: report.normalized.owner.names[0], yearsOwned: report.normalized.owner.yearsOwned, taxAmount: report.normalized.tax.taxAmount, assessed: report.normalized.tax.assessedValue, flags: report.normalized.distress.flags, lastSale: report.normalized.transactions[0] ? { date: report.normalized.transactions[0].date, price: report.normalized.transactions[0].price } : undefined } : null,
     comps: compRows.map((c) => ({ address: c.address, soldPrice: c.soldPrice ? Number(c.soldPrice) : null, soldAt: c.soldAt ? shortDate(c.soldAt) : null, sqft: c.sqft, distanceMi: c.distanceMi ? Number(c.distanceMi) : null })),
     sections: sections as PackageData["sections"],

@@ -12,6 +12,8 @@ import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { dateTime } from "@/lib/utils";
+import { loadIntegrationSettings, SUBSCRIBABLE_EVENTS } from "@/lib/services/integrations";
+import { IntegrationsPanel } from "./integrations-panel";
 
 export const metadata = { title: "Settings" };
 
@@ -26,6 +28,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   ]);
   const isAdmin = session.role === "admin";
   const status = providerStatus();
+  // Keys and webhook secrets are loaded for admins only, and only on the tab that shows them.
+  const connect = tab === "integrations" && isAdmin ? await loadIntegrationSettings(session.orgId) : { keys: [], webhooks: [] };
   const branding = (org?.branding ?? {}) as Record<string, string | undefined>;
   const tabs = ["team", "pipeline", "tags", "branding", "integrations", "audit"].map((t) => ({ key: t, label: t[0]!.toUpperCase() + t.slice(1), href: `/settings?tab=${t}` }));
   return (
@@ -119,7 +123,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
         {tab === "integrations" ? (
           <div className="space-y-3 max-w-2xl">
-            <Alert tone="info">Keys live only in environment variables. Set them in <code>.env.local</code> for development and in the hosting provider for production, then restart. Nothing is stored in the database.</Alert>
+            <Alert tone="info">Provider keys live only in environment variables. Set them in <code>.env.local</code> for development and in the hosting provider for production, then restart. Provider credentials are never stored in the database.</Alert>
             {[
               ["Database", status.database, "DATABASE_URL", status.database === "postgres" ? "Supabase Postgres" : "Local PGlite file under .pglite (demo data, single machine)"],
               ["Auth", status.auth, "NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY", session.authMode === "dev" ? "Signed in through DEV_AUTH_EMAIL. Remove before deploying." : "Supabase Auth"],
@@ -136,6 +140,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             ))}
           </div>
         ) : null}
+
+        {tab === "integrations" ? <div className="mt-6 max-w-4xl"><IntegrationsPanel isAdmin={isAdmin} keys={connect.keys} webhooks={connect.webhooks} events={SUBSCRIBABLE_EVENTS} origin={process.env.APP_URL ?? ""} /></div> : null}
 
         {tab === "audit" ? (
           <Card><CardHeader title="Audit log" description="Last 100 changes" /><CardBody className="p-0">

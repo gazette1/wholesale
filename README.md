@@ -65,6 +65,8 @@ DATABASE_URL=postgresql://... pnpm --filter @dealcalc/db seed
 | `POST /api/webhooks/resend` | Resend dashboard, webhook for email events; set `RESEND_WEBHOOK_SECRET` |
 | `GET /api/cron/dispatch` | Scheduler, every minute, `Authorization: Bearer $CRON_SECRET`. `apps/web/vercel.json` configures Vercel Cron. |
 
+Other software (Zapier, Make, web forms, dialers, spreadsheets) connects through the inbound REST API at `/api/v1`, signed outbound webhooks, and CSV import and export, all managed under Settings, Integrations. See "Connecting other software" in `docs/INTEGRATIONS.md`.
+
 ## Deploy
 
 1. Create a Vercel project from `apps/web` with root directory `apps/web` and framework Next.js. Install command `pnpm install`, build command `pnpm build`.

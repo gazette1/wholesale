@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskList } from "../leads/[id]/task-list";
 import { fullName, cn } from "@/lib/utils";
 import { CheckSquare } from "lucide-react";
+import { TzOffset } from "@/components/ui/tz-offset";
 
 export const metadata = { title: "Follow ups" };
 
@@ -71,7 +72,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             <ActionForm action={addTask.bind(null, null)} submitLabel="Add" variant="outline" resetOnSuccess className="space-y-2">
               <Field label="Title"><Input name="title" required /></Field>
               <Field label="Kind"><Select name="kind" defaultValue="call"><option value="call">Call</option><option value="text">Text</option><option value="email">Email</option><option value="visit">Visit</option><option value="other">Other</option></Select></Field>
-              <Field label="Due"><Input name="dueAt" type="datetime-local" /></Field>
+              <Field label="Due"><TzOffset /><Input name="dueAt" type="datetime-local" /></Field>
               <Field label="Assign to"><Select name="assignedTo" defaultValue={session.profileId}>{team.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}</Select></Field>
             </ActionForm>
           </CardBody>

@@ -55,3 +55,23 @@ describe("schema on PGlite", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("migration ledger", () => {
+  it("is idempotent and upgrades a database that predates the ledger", async () => {
+    const { createPgliteDb } = await import("../src/client");
+    const { migrate, migrationFiles, migrationSql, splitStatements } = await import("../src/migrate");
+    const { sql } = await import("drizzle-orm");
+    const fresh = createPgliteDb();
+    const first = await migrate(fresh);
+    expect(first).toEqual(migrationFiles());
+    expect(await migrate(fresh)).toEqual([]);
+
+    // Legacy shape: only 0000 applied by hand, no ledger table.
+    const legacy = createPgliteDb();
+    for (const st of splitStatements(migrationSql(migrationFiles()[0]!))) await legacy.execute(sql.raw(st));
+    const upgraded = await migrate(legacy);
+    expect(upgraded).toEqual(migrationFiles().slice(1));
+    const cols = await legacy.execute(sql.raw(`select column_name from information_schema.columns where table_name = 'deal_analyses' and column_name in ('strategy','archived_at','trashed_at')`));
+    expect(((cols as any).rows ?? cols).length).toBe(3);
+  }, 60000);
+});

@@ -6,6 +6,7 @@ import { Textarea, Select, Input, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { dateTime, money } from "@/lib/utils";
 import { Phone, MessageSquare, Mail, StickyNote, ArrowRightLeft, DollarSign, CheckSquare, Sparkles, FileText, Calculator, Bot } from "lucide-react";
+import { TzOffset } from "@/components/ui/tz-offset";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = { call: Phone, sms: MessageSquare, email: Mail, note: StickyNote, stage_change: ArrowRightLeft, offer: DollarSign, task: CheckSquare, enrichment: Sparkles, document: FileText, analysis: Calculator, system: Bot };
 
@@ -50,7 +51,7 @@ export function ActivityTab({ detail, team, sessionProfileId }: { detail: LeadDe
               <input type="hidden" name="type" value="call" />
               <Field label="Outcome"><Select name="outcome" defaultValue="no_answer"><option value="spoke">Spoke with seller</option><option value="voicemail">Left voicemail</option><option value="no_answer">No answer</option><option value="wrong_number">Wrong number</option><option value="callback">Asked for callback</option></Select></Field>
               <Field label="Notes"><Textarea name="text" placeholder="What they said, what they want, what is wrong with the house" /></Field>
-              <Field label="Next follow up"><Input name="nextFollowUpAt" type="datetime-local" /></Field>
+              <Field label="Next follow up"><TzOffset /><Input name="nextFollowUpAt" type="datetime-local" /></Field>
             </ActionForm>
           </CardBody>
         </Card>

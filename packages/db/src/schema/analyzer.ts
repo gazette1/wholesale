@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, boolean, jsonb, numeric, integer, date, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, boolean, jsonb, numeric, integer, date, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { base, analysisStatusEnum } from "./_shared";
 import { orgs, profiles } from "./identity";
 import { properties } from "./properties";
@@ -25,6 +25,11 @@ export const dealAnalyses = pgTable("deal_analyses", {
   spread: numeric("spread", { precision: 14, scale: 2 }),
   arv: numeric("arv", { precision: 14, scale: 2 }),
   purchasePrice: numeric("purchase_price", { precision: 14, scale: 2 }),
+  /** Exit strategy this scenario is written for: wholesale, flip, or rental. */
+  strategy: text("strategy").notNull().default("wholesale"),
+  /** Library state. Archived rows leave the default list; trashed rows can be restored or deleted for good. */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  trashedAt: timestamp("trashed_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("deal_analyses_property_version").on(t.propertyId, t.version),
   index("deal_analyses_lead_idx").on(t.leadId),

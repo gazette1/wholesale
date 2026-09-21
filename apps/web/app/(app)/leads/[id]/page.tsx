@@ -18,7 +18,8 @@ import { AnalyzerTab } from "./tabs/analyzer";
 import { OffersTab } from "./tabs/offers";
 import { runEnrichment } from "@/lib/actions/leads";
 import { ActionButton } from "@/components/ui/action-form";
-import { Phone, MessageSquare, Mail, ExternalLink } from "lucide-react";
+import { Phone, MessageSquare, Mail, ExternalLink, Calculator } from "lucide-react";
+import { createAnalysis } from "@/lib/actions/analyzer";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   return { title: "Lead" };
@@ -32,6 +33,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   if (!detail) notFound();
   const [stages, team, sources, tagList, templates, campaigns] = await Promise.all([listStages(session.orgId), listProfiles(session.orgId), listSources(session.orgId), listTags(session.orgId), templatesFor(session.orgId), listCampaigns(session.orgId)]);
   const { lead, property, stage, primaryContact } = detail;
+  const primaryAnalysis = detail.analyses.find((a) => a.isPrimary) ?? detail.analyses[0] ?? null;
   const due = dueLabel(lead.nextFollowUpAt);
   const phone = primaryContact?.phones.find((p) => p.isPrimary)?.number ?? primaryContact?.phones[0]?.number;
   const email = primaryContact?.emails.find((e) => e.isPrimary)?.address ?? primaryContact?.emails[0]?.address;
@@ -53,6 +55,9 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             <Link href={`/leads/${id}?tab=messages`}><Button variant="outline"><MessageSquare className="h-4 w-4" />Text</Button></Link>
             {email ? <Link href={`/leads/${id}?tab=messages&channel=email`}><Button variant="outline"><Mail className="h-4 w-4" />Email</Button></Link> : null}
             <Link href={`/properties/${property.id}/report`}><Button variant="ghost"><ExternalLink className="h-4 w-4" />Report</Button></Link>
+            {primaryAnalysis
+              ? <Link href={`/analyzer/${primaryAnalysis.id}`}><Button variant="primary"><Calculator className="h-4 w-4" />Analyze deal</Button></Link>
+              : can(session, "analysis:write") ? <form action={createAnalysis.bind(null, property.id, id)}><Button type="submit" variant="primary"><Calculator className="h-4 w-4" />Analyze deal</Button></form> : null}
           </>
         }
       />

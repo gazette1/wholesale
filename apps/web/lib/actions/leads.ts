@@ -3,16 +3,36 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { leads, properties, contacts, propertyContacts, pipelineStages, activities, tasks, leadTags, tags, offers, campaignEnrollments, campaigns } from "@dealcalc/db";
+import { leads, properties, contacts, propertyContacts, pipelineStages, activities, tasks, leadTags, tags, offers, campaignEnrollments, campaigns, profiles, dealAnalyses } from "@dealcalc/db";
 import { judgmentProvider, assessDistress } from "@dealcalc/integrations";
 import { getDb } from "../db";
-import { requireSession, requireCan } from "../auth";
+import { requireSession, requireCan, can } from "../auth";
 import { audit } from "../audit";
 import { sendToLead, ConsentError } from "../services/messaging";
 import { enrichProperty } from "../services/enrichment";
+import { emitEvent } from "../services/integrations";
 import { toNumber, toOptionalNumber } from "../utils";
+import { leadQuickView, type LeadQuickView } from "../data/leads";
 
 export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error: string };
+
+/** Notes, calls, and tasks are open to every role except viewer, matching the row level security policies. */
+function requireContributor(session: { role: string }): void {
+  if (session.role === "viewer") throw new Error("Your role (viewer) is read only.");
+}
+
+/**
+ * A datetime-local field posts "2026-09-21T14:30" with no zone. Forms send the browser's tzOffset in minutes
+ * so the time means what the user saw; without it the value is read in the server's zone.
+ */
+function parseLocalDateTime(value: string, tzOffsetMinutes?: string | null): Date | null {
+  if (!value) return null;
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(value)) { const zoned = new Date(value); return Number.isNaN(zoned.getTime()) ? null : zoned; }
+  const offset = tzOffsetMinutes != null && tzOffsetMinutes !== "" && Number.isFinite(Number(tzOffsetMinutes)) ? Number(tzOffsetMinutes) : null;
+  const d = new Date(offset === null ? value : `${value.length === 16 ? value + ":00" : value}Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  return offset === null ? d : new Date(d.getTime() + offset * 60_000);
+}
 
 const NewLeadSchema = z.object({
   addressLine1: z.string().min(3), addressLine2: z.string().optional(), city: z.string().min(1), state: z.string().length(2), postalCode: z.string().min(5),
@@ -62,6 +82,7 @@ export async function createLead(_prev: ActionResult | null, form: FormData): Pr
     if (d.notes) await db.insert(activities).values({ orgId: session.orgId, leadId: lead!.id, actorId: session.profileId, type: "note", payload: { text: d.notes } });
     await db.insert(tasks).values({ orgId: session.orgId, leadId: lead!.id, assignedTo: d.assignedTo || session.profileId, title: "First call", kind: "call", dueAt: new Date() });
     await audit(session, { entityType: "lead", entityId: lead!.id, action: "create", after: { propertyId: property!.id, contactId: contact!.id } });
+    await emitEvent(session.orgId, "lead.created", { leadId: lead!.id, propertyId: property!.id, via: "app", externalId: null, address: { line1: d.addressLine1, line2: d.addressLine2 ?? null, city: d.city, state: d.state, postalCode: d.postalCode }, contact: { id: contact!.id, firstName: d.firstName, lastName: d.lastName ?? null, phone: d.phone ?? null, email: d.email || null }, askingPrice: d.askingPrice, urgency: d.sellerUrgency, source: null, sourceId: d.sourceId || null, stage: { key: stage.key, name: stage.name } });
     if (d.enrich) {
       try { await enrichProperty(session.orgId, property!.id, session.profileId); } catch { /* report page shows the failure */ }
     }
@@ -88,6 +109,7 @@ export async function moveLeadStage(leadId: string, stageId: string): Promise<Ac
     await db.update(leads).set({ stageId: stage.id, stageEnteredAt: new Date(), status }).where(eq(leads.id, leadId));
     await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: session.profileId, type: "stage_change", payload: { from: from?.key, to: stage.key, fromName: from?.name, toName: stage.name } });
     await audit(session, { entityType: "lead", entityId: leadId, action: "stage_change", before: { stage: from?.key }, after: { stage: stage.key } });
+    await emitEvent(session.orgId, "lead.stage_changed", { leadId, propertyId: lead.propertyId, status, from: from ? { key: from.key, name: from.name } : null, to: { key: stage.key, name: stage.name } });
     revalidatePath("/pipeline"); revalidatePath("/leads"); revalidatePath(`/leads/${leadId}`); revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
@@ -136,6 +158,7 @@ function pick(obj: Record<string, unknown>, keys: string[]) {
 export async function addActivity(leadId: string, form: FormData): Promise<ActionResult> {
   const session = await requireSession();
   try {
+    requireContributor(session);
     const db = await getDb();
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
     if (!lead) return { ok: false, error: "Lead not found." };
@@ -155,8 +178,8 @@ export async function addActivity(leadId: string, form: FormData): Promise<Actio
         if (strong.length) await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: null, type: "system", payload: { text: `Suggested deal issues from notes (${assessment.provider}): ${strong.join(", ")}`, suggestions: assessment.signals, motivationScore: assessment.motivationScore } });
       } catch { /* judgment is optional */ }
     }
-    const next = String(form.get("nextFollowUpAt") ?? "");
-    if (next) await db.update(leads).set({ nextFollowUpAt: new Date(next) }).where(eq(leads.id, leadId));
+    const next = parseLocalDateTime(String(form.get("nextFollowUpAt") ?? ""), form.get("tzOffset") as string | null);
+    if (next) await db.update(leads).set({ nextFollowUpAt: next }).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
     revalidatePath(`/leads/${leadId}`); revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
@@ -168,11 +191,25 @@ export async function addTask(leadId: string | null, form: FormData): Promise<Ac
   const session = await requireSession();
   try {
     const db = await getDb();
+    requireContributor(session);
     const title = String(form.get("title") ?? "").trim();
     if (!title) return { ok: false, error: "Task needs a title." };
-    const due = String(form.get("dueAt") ?? "");
-    await db.insert(tasks).values({ orgId: session.orgId, leadId, assignedTo: String(form.get("assignedTo") || session.profileId), title, kind: (String(form.get("kind") || "call")) as any, dueAt: due ? new Date(due) : new Date() });
-    if (leadId) await db.update(leads).set({ nextFollowUpAt: due ? new Date(due) : new Date() }).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
+    if (leadId) {
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
+      if (!lead) return { ok: false, error: "Lead not found." };
+    }
+    let assignedTo = session.profileId;
+    const requested = String(form.get("assignedTo") || "");
+    if (requested && requested !== session.profileId) {
+      const assignee = await db.query.profiles.findFirst({ where: and(eq(profiles.id, requested), eq(profiles.orgId, session.orgId), eq(profiles.active, true)) });
+      if (!assignee) return { ok: false, error: "That team member was not found." };
+      assignedTo = assignee.id;
+    }
+    const kindRaw = String(form.get("kind") || "call");
+    const kind = (["call", "text", "email", "visit", "other"].includes(kindRaw) ? kindRaw : "other") as "call";
+    const dueAt = parseLocalDateTime(String(form.get("dueAt") ?? ""), form.get("tzOffset") as string | null) ?? new Date();
+    await db.insert(tasks).values({ orgId: session.orgId, leadId, assignedTo, title: title.slice(0, 200), kind, dueAt });
+    if (leadId) await db.update(leads).set({ nextFollowUpAt: dueAt }).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
     revalidatePath(leadId ? `/leads/${leadId}` : "/tasks"); revalidatePath("/tasks"); revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
@@ -182,10 +219,11 @@ export async function addTask(leadId: string | null, form: FormData): Promise<Ac
 
 export async function completeTask(taskId: string, done: boolean): Promise<ActionResult> {
   const session = await requireSession();
+  if (session.role === "viewer") return { ok: false, error: "Your role (viewer) is read only." };
   const db = await getDb();
   const task = await db.query.tasks.findFirst({ where: and(eq(tasks.id, taskId), eq(tasks.orgId, session.orgId)) });
   if (!task) return { ok: false, error: "Task not found." };
-  await db.update(tasks).set({ doneAt: done ? new Date() : null }).where(eq(tasks.id, taskId));
+  await db.update(tasks).set({ doneAt: done ? new Date() : null }).where(and(eq(tasks.id, taskId), eq(tasks.orgId, session.orgId)));
   if (done && task.leadId) await db.insert(activities).values({ orgId: session.orgId, leadId: task.leadId, actorId: session.profileId, type: "task", payload: { text: `Completed: ${task.title}` } });
   revalidatePath("/tasks"); revalidatePath("/dashboard"); if (task.leadId) revalidatePath(`/leads/${task.leadId}`);
   return { ok: true };
@@ -193,20 +231,30 @@ export async function completeTask(taskId: string, done: boolean): Promise<Actio
 
 export async function toggleTag(leadId: string, tagId: string, on: boolean): Promise<ActionResult> {
   const session = await requireSession();
-  requireCan(session, "lead:write");
+  if (!can(session, "lead:write")) return { ok: false, error: `Your role (${session.role}) cannot change tags.` };
   const db = await getDb();
+  const [lead, tag] = await Promise.all([
+    db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) }),
+    db.query.tags.findFirst({ where: and(eq(tags.id, tagId), eq(tags.orgId, session.orgId)) }),
+  ]);
+  if (!lead || !tag) return { ok: false, error: "Lead or tag not found." };
   if (on) await db.insert(leadTags).values({ orgId: session.orgId, leadId, tagId }).onConflictDoNothing();
-  else await db.delete(leadTags).where(and(eq(leadTags.leadId, leadId), eq(leadTags.tagId, tagId)));
+  else await db.delete(leadTags).where(and(eq(leadTags.leadId, leadId), eq(leadTags.tagId, tagId), eq(leadTags.orgId, session.orgId)));
   revalidatePath(`/leads/${leadId}`); revalidatePath("/leads");
   return { ok: true };
 }
 
 export async function createTag(form: FormData): Promise<ActionResult> {
   const session = await requireSession();
+  if (!can(session, "lead:write")) return { ok: false, error: `Your role (${session.role}) cannot create tags.` };
   const db = await getDb();
-  const name = String(form.get("name") ?? "").trim();
+  const name = String(form.get("name") ?? "").trim().slice(0, 40);
   if (!name) return { ok: false, error: "Tag needs a name." };
-  await db.insert(tags).values({ orgId: session.orgId, name, kind: (String(form.get("kind") || "lead")) as any, color: String(form.get("color") || "#6366f1") }).onConflictDoNothing();
+  const kindRaw = String(form.get("kind") || "lead");
+  const kind = (["lead", "buyer", "issue"].includes(kindRaw) ? kindRaw : "lead") as "lead";
+  const colorRaw = String(form.get("color") || "#6366f1");
+  const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : "#6366f1";
+  await db.insert(tags).values({ orgId: session.orgId, name, kind, color }).onConflictDoNothing();
   revalidatePath("/settings"); revalidatePath("/leads");
   return { ok: true };
 }
@@ -250,16 +298,23 @@ export async function createOffer(leadId: string, form: FormData): Promise<Actio
     const db = await getDb();
     const amount = toNumber(form.get("amount"));
     if (amount <= 0) return { ok: false, error: "Offer amount must be positive." };
-    const status = String(form.get("status") ?? "sent") as any;
-    const [offer] = await db.insert(offers).values({ orgId: session.orgId, leadId, analysisId: String(form.get("analysisId") ?? "") || null, amount: String(amount), type: (String(form.get("type") || "cash")) as any, status, sentAt: status === "sent" ? new Date() : null, sentVia: String(form.get("sentVia") ?? "") || null, notes: String(form.get("notes") ?? "") || null, createdBy: session.profileId }).returning();
+    const owned = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
+    if (!owned) return { ok: false, error: "Lead not found." };
+    const statusRaw = String(form.get("status") ?? "sent");
+    const status = (["draft", "sent", "countered", "accepted", "rejected", "expired"].includes(statusRaw) ? statusRaw : "sent") as "sent";
+    const analysisIdRaw = String(form.get("analysisId") ?? "") || null;
+    const linked = analysisIdRaw ? await db.query.dealAnalyses.findFirst({ where: and(eq(dealAnalyses.id, analysisIdRaw), eq(dealAnalyses.orgId, session.orgId), eq(dealAnalyses.propertyId, owned.propertyId)) }) : null;
+    if (analysisIdRaw && !linked) return { ok: false, error: "That analysis does not belong to this lead." };
+    const [offer] = await db.insert(offers).values({ orgId: session.orgId, leadId, analysisId: linked?.id ?? null, amount: String(amount), type: (String(form.get("type") || "cash")) as any, status, sentAt: status === "sent" ? new Date() : null, sentVia: String(form.get("sentVia") ?? "") || null, notes: String(form.get("notes") ?? "") || null, createdBy: session.profileId }).returning();
     await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: session.profileId, type: "offer", payload: { amount, status, offerId: offer!.id } });
     if (status === "sent") {
       const stage = await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.orgId, session.orgId), eq(pipelineStages.key, "offer_sent")) });
-      const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+      const lead = owned;
       const current = lead ? await db.query.pipelineStages.findFirst({ where: eq(pipelineStages.id, lead.stageId) }) : null;
       if (stage && current && current.position < stage.position) await moveLeadStage(leadId, stage.id);
     }
     await audit(session, { entityType: "offer", entityId: offer!.id, action: "create", after: { amount, status } });
+    await emitEvent(session.orgId, "offer.created", { offerId: offer!.id, leadId, analysisId: offer!.analysisId, amount, type: offer!.type, status });
     revalidatePath(`/leads/${leadId}`); revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
@@ -269,13 +324,17 @@ export async function createOffer(leadId: string, form: FormData): Promise<Actio
 
 export async function updateOfferStatus(offerId: string, leadId: string, status: "accepted" | "rejected" | "countered" | "expired", counterAmount?: number): Promise<ActionResult> {
   const session = await requireSession();
-  requireCan(session, "lead:write");
+  if (!can(session, "lead:write")) return { ok: false, error: `Your role (${session.role}) cannot change offers.` };
   const db = await getDb();
   const offer = await db.query.offers.findFirst({ where: and(eq(offers.id, offerId), eq(offers.orgId, session.orgId)) });
   if (!offer) return { ok: false, error: "Offer not found." };
-  await db.update(offers).set({ status, counterAmount: counterAmount != null ? String(counterAmount) : offer.counterAmount }).where(eq(offers.id, offerId));
+  // The lead comes from the offer row, never from the caller.
+  leadId = offer.leadId;
+  if (counterAmount != null && !(Number.isFinite(counterAmount) && counterAmount > 0)) return { ok: false, error: "Counter amount must be positive." };
+  await db.update(offers).set({ status, counterAmount: counterAmount != null ? String(counterAmount) : offer.counterAmount }).where(and(eq(offers.id, offerId), eq(offers.orgId, session.orgId)));
   await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: session.profileId, type: "offer", payload: { offerId, status, counterAmount } });
   await audit(session, { entityType: "offer", entityId: offerId, action: "status", before: { status: offer.status }, after: { status, counterAmount } });
+  await emitEvent(session.orgId, "offer.status_changed", { offerId, leadId, amount: Number(offer.amount), from: offer.status, to: status, counterAmount: counterAmount ?? null });
   if (status === "accepted") {
     const stage = await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.orgId, session.orgId), eq(pipelineStages.key, "under_contract")) });
     if (stage) await moveLeadStage(leadId, stage.id);
@@ -319,4 +378,19 @@ export async function deleteLead(leadId: string): Promise<never | ActionResult> 
   await db.delete(leads).where(eq(leads.id, leadId));
   revalidatePath("/leads"); revalidatePath("/pipeline");
   redirect("/leads");
+}
+
+export type LeadQuickViewResult = { ok: true; data: LeadQuickView } | { ok: false; error: string };
+
+/** Read only. Loads the data behind the pipeline quick view drawer, scoped to the caller org. */
+export async function getLeadQuickView(leadId: string): Promise<LeadQuickViewResult> {
+  const session = await requireSession();
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(leadId)) return { ok: false, error: "Lead not found." };
+    const data = await leadQuickView(session.orgId, leadId);
+    if (!data) return { ok: false, error: "Lead not found." };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not load the lead." };
+  }
 }

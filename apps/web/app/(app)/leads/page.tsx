@@ -4,7 +4,8 @@ import { listLeads, listStages, listProfiles, listSources, listTags, type LeadFi
 import { PageHeader, EmptyState } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { Table, THead, TBody, TH, TD } from "@/components/ui/table";
+import { ClickableRow } from "./clickable-row";
 import { StageBadge, Badge } from "@/components/ui/badge";
 import { money, dueLabel, relative, fullName, cn } from "@/lib/utils";
 import { Plus, ArrowUpDown } from "lucide-react";
@@ -20,7 +21,7 @@ const COLUMNS: { key: string; label: string; sort?: string; right?: boolean }[] 
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const filters: LeadFilters = { q: sp.q, stage: sp.stage, assigned: sp.assigned, source: sp.source, status: sp.status ?? "open", tag: sp.tag, due: sp.due as any, sort: sp.sort, dir: sp.dir as any, page: Number(sp.page ?? 1), issue: sp.issue };
+  const filters: LeadFilters = { q: sp.q, stage: sp.stage, assigned: sp.assigned, source: sp.source, status: sp.status ?? "open", tag: sp.tag, due: sp.due as any, sort: sp.sort, dir: sp.dir as any, page: Number(sp.page ?? 1), issue: sp.issue, untouched: sp.untouched, created: sp.created as any, offer: sp.offer };
   const [data, stages, team, sources, tagList] = await Promise.all([listLeads(session.orgId, filters), listStages(session.orgId), listProfiles(session.orgId), listSources(session.orgId), listTags(session.orgId)]);
   const link = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -28,15 +29,21 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     return `/leads?${p.toString()}`;
   };
   const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
+  // A link can ask for several stages at once (stage=a,b). Show that as its own option so the select reflects the filter.
+  const stageKeys = (sp.stage ?? "").split(",").filter(Boolean);
+  const multiStageLabel = stageKeys.length > 1 ? stageKeys.map((k) => stages.find((s) => s.key === k)?.name ?? k).join(" + ") : null;
   return (
     <>
       <PageHeader title="Leads" description={`${data.total} ${filters.status === "all" ? "" : filters.status} leads`} actions={<Link href="/leads/new"><Button variant="primary"><Plus className="h-4 w-4" />New lead</Button></Link>} />
       <form method="get" className="flex flex-wrap items-end gap-2 mb-3">
         <Input name="q" defaultValue={sp.q} placeholder="Search address, name, phone" className="w-60" />
-        <Select name="stage" defaultValue={sp.stage ?? ""} className="w-44"><option value="">All stages</option>{stages.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}</Select>
+        <Select name="stage" defaultValue={sp.stage ?? ""} className="w-44"><option value="">All stages</option>{multiStageLabel ? <option value={sp.stage}>{multiStageLabel}</option> : null}{stages.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}</Select>
         <Select name="assigned" defaultValue={sp.assigned ?? ""} className="w-40"><option value="">Anyone</option><option value="unassigned">Unassigned</option>{team.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}</Select>
         <Select name="source" defaultValue={sp.source ?? ""} className="w-40"><option value="">Any source</option>{sources.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</Select>
         <Select name="due" defaultValue={sp.due ?? ""} className="w-36"><option value="">Any follow up</option><option value="overdue">Overdue</option><option value="today">Due today</option><option value="week">This week</option></Select>
+        <Select name="untouched" defaultValue={sp.untouched ?? ""} className="w-36"><option value="">Any attempts</option><option value="1">Untouched</option></Select>
+        <Select name="created" defaultValue={sp.created ?? ""} className="w-36"><option value="">Created any time</option><option value="today">Created today</option><option value="week">New this week</option><option value="month">Last 30 days</option></Select>
+        <Select name="offer" defaultValue={sp.offer ?? ""} className="w-36"><option value="">Any offer state</option><option value="sent">Offer out</option></Select>
         <Select name="tag" defaultValue={sp.tag ?? ""} className="w-40"><option value="">Any tag</option>{tagList.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}</Select>
         <Select name="status" defaultValue={sp.status ?? "open"} className="w-32"><option value="open">Open</option><option value="won">Won</option><option value="lost">Lost</option><option value="nurture">Nurture</option><option value="all">All</option></Select>
         <Button type="submit" variant="outline">Apply</Button>
@@ -44,8 +51,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       </form>
       <div className="flex flex-wrap gap-1.5 mb-3 text-xs">
         <span className="text-fg-3 mr-1">Saved views:</span>
-        {[{ label: "Call now", q: { due: "overdue", status: "open" } }, { label: "Untouched", q: { stage: "new_lead", status: "open" } }, { label: "Offers out", q: { stage: "offer_sent", status: "open" } }, { label: "Messy deals", q: { issue: "dirty_title", status: "open" } }, { label: "Mine", q: { assigned: session.profileId, status: "open" } }].map((v) => (
-          <Link key={v.label} href={link({ q: undefined, stage: undefined, assigned: undefined, due: undefined, issue: undefined, ...v.q })} className="rounded-full border border-border bg-surface px-2.5 py-1 hover:bg-surface-2">{v.label}</Link>
+        {[{ label: "Call now", q: { due: "overdue", status: "open" } }, { label: "Untouched", q: { untouched: "1", status: "open" } }, { label: "Offers out", q: { stage: "offer_sent", status: "open" } }, { label: "Messy deals", q: { issue: "dirty_title", status: "open" } }, { label: "Mine", q: { assigned: session.profileId, status: "open" } }].map((v) => (
+          <Link key={v.label} href={link({ q: undefined, stage: undefined, assigned: undefined, due: undefined, issue: undefined, untouched: undefined, created: undefined, offer: undefined, page: undefined, ...v.q })} className="rounded-full border border-border bg-surface px-2.5 py-1 hover:bg-surface-2">{v.label}</Link>
         ))}
       </div>
       {data.rows.length === 0 ? <EmptyState title="No leads match" description="Try a different filter or add a lead." action={<Link href="/leads/new"><Button variant="primary">New lead</Button></Link>} /> : (
@@ -61,7 +68,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                 const due = dueLabel(r.nextFollowUpAt);
                 const messy = Number((r.dealIssues as any)?.messyScore ?? 0);
                 return (
-                  <TR key={r.id}>
+                  <ClickableRow key={r.id} href={`/leads/${r.id}`}>
                     <TD>
                       <Link href={`/leads/${r.id}`} className="font-medium hover:underline">{r.address}</Link>
                       <div className="text-xs text-fg-3">{r.city}, {r.state} {r.postalCode}{messy ? ` · ${messy} issue${messy > 1 ? "s" : ""}` : ""}</div>
@@ -78,7 +85,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                     <TD>{r.source ?? ""}</TD>
                     <TD>{r.assignedName ?? <span className="text-fg-3">Unassigned</span>}</TD>
                     <TD className="text-fg-3">{relative(r.createdAt)}</TD>
-                  </TR>
+                  </ClickableRow>
                 );
               })}
             </TBody>

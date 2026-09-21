@@ -1,4 +1,4 @@
-import { and, count, eq, gte, isNotNull, isNull, lte, sql, desc } from "drizzle-orm";
+import { and, count, countDistinct, eq, gte, isNotNull, isNull, lte, sql, desc } from "drizzle-orm";
 import { leads, pipelineStages, leadSources, tasks, offers, activities, profiles, properties, contacts } from "@dealcalc/db";
 import { getDb } from "../db";
 
@@ -14,7 +14,8 @@ export async function dashboardData(orgId: string) {
     db.select({ source: leadSources.name, n: count() }).from(leads).leftJoin(leadSources, eq(leads.sourceId, leadSources.id)).where(eq(leads.orgId, orgId)).groupBy(leadSources.name),
     db.select({ n: count() }).from(leads).where(and(eq(leads.orgId, orgId), eq(leads.status, "open"), isNotNull(leads.nextFollowUpAt), lte(leads.nextFollowUpAt, endOfToday))),
     db.select({ n: count() }).from(leads).where(and(eq(leads.orgId, orgId), eq(leads.status, "open"), isNotNull(leads.nextFollowUpAt), lte(leads.nextFollowUpAt, now))),
-    db.select({ n: count() }).from(offers).where(and(eq(offers.orgId, orgId), eq(offers.status, "sent"))),
+    // Counts leads, not offer rows, so the tile matches the list behind it (/leads?offer=sent&status=all).
+    db.select({ n: countDistinct(offers.leadId) }).from(offers).where(and(eq(offers.orgId, orgId), eq(offers.status, "sent"))),
     db.select({ n: count() }).from(leads).innerJoin(pipelineStages, eq(leads.stageId, pipelineStages.id)).where(and(eq(leads.orgId, orgId), sql`${pipelineStages.key} in ('under_contract','due_diligence')`)),
     db.select({ n: count() }).from(leads).where(and(eq(leads.orgId, orgId), eq(leads.status, "won"))),
     db.select({ n: count() }).from(leads).where(and(eq(leads.orgId, orgId), gte(leads.createdAt, weekAgo))),

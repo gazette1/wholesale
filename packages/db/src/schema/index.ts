@@ -6,3 +6,4 @@ export * from "./enrichment";
 export * from "./messaging";
 export * from "./analyzer";
 export * from "./buyers";
+export * from "./integrations";

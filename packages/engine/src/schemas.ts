@@ -23,6 +23,11 @@ export const RehabLineSchema = z.object({
   answer: z.enum(["Yes", "No"]).nullable(),
   quantity: z.number().nullable(),
   unitCost: z.number().nullable(),
+  /** Work tracking. Does not change the estimate. */
+  status: z.enum(["todo", "in_progress", "done"]).nullable().optional(),
+  notes: z.string().max(500).nullable().optional(),
+  /** True for items added by hand, outside the workbook checklist. */
+  custom: z.boolean().optional(),
 });
 export const RehabEstimatorInputSchema = z.object({ address: z.string().nullable().optional(), lines: z.array(RehabLineSchema) });
 
@@ -108,8 +113,38 @@ export const WholesaleInputSchema = z.object({
   sellerClosingCosts: z.number().optional(), arvFactor: pct("Share of ARV").optional(),
 });
 
+const SellerCaseSchema = z.object({
+  outcome: usd("Dollar outcome for the seller in this case"), effort: z.number().min(0), months: z.number().min(0), probability: z.number().min(0).max(1),
+});
+
+export const DealOffersSchema = z.object({
+  comparables: z.array(z.object({ label: z.string().max(120), value: usd("Comparable sale price") })).max(12),
+  useComparableAverage: z.boolean(),
+  squareFeet: z.number().min(0).describe("The total square footage of the entire interior of the property"),
+  perSqft: z.object({ light: usd("Light rehab cost per square foot"), medium: usd("Medium rehab cost per square foot"), full: usd("Full rehab cost per square foot") }),
+  sellerCurrent: SellerCaseSchema.nullable().optional(),
+  sellerDesired: SellerCaseSchema.nullable().optional(),
+});
+
+export const RehabPlanSchema = z.object({
+  source: z.enum(["checklist", "manual", "perSqft"]),
+  perSqftRate: z.number().min(0).optional(),
+  squareFeet: z.number().min(0).optional(),
+});
+
+export const LoanAnalysisInputSchema = z.object({
+  principal: usd("Loan principal"), annualRate: pct("Annual interest rate", 0.5), months: z.number().int().min(1).max(600),
+  firstPaymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}/), payoffAfterPayment: z.number().int().min(1).nullable().optional(),
+});
+
+export const ProgressEventSchema = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}/), message: z.string().min(1).max(300) });
+
 export const DealInputSchema = z.object({
-  meta: z.object({ name: z.string(), address: z.string().optional(), notes: z.string().optional() }),
+  meta: z.object({ name: z.string(), address: z.string().optional(), notes: z.string().optional(), strategy: z.enum(["wholesale", "flip", "rental"]).optional() }),
+  offers: DealOffersSchema.optional(),
+  rehabPlan: RehabPlanSchema.optional(),
+  progress: z.array(ProgressEventSchema).max(200).optional(),
+  loan: LoanAnalysisInputSchema.optional(),
   quickOffers: QuickOffersInputSchema.optional(),
   rehab: RehabEstimatorInputSchema,
   acquisitions: AcquisitionsInputSchema,

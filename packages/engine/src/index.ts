@@ -1,4 +1,4 @@
-export const ENGINE_VERSION = "0.1.0";
+export * from "./version";
 export * from "./money";
 export * from "./anomalies";
 export * from "./types";
@@ -10,4 +10,10 @@ export * from "./buyAndHold";
 export * from "./amortization";
 export * from "./wholesale";
 export * from "./sensitivity";
+export * from "./dealOffers";
+export * from "./loanAnalysis";
+export * from "./rehabPlan";
+export * from "./glossary";
 export * from "./schemas";
+export * from "./validate";
+export * from "./runDeal";
