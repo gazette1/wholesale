@@ -20,7 +20,7 @@ export default async function ReviewPage() {
   const canWrite = can(session, "lead:write");
   return (
     <>
-      <PageHeader title="Review queue" description="Lead scores the scorer was not confident enough to apply on its own. Accept the score, or override it with your own number from 0 to 100." />
+      <PageHeader title="Review queue" description="Lead scores the scorer was not confident enough to apply on its own. Accept the score, or override it with your own motivation from 1 to 10." />
       {rows.length === 0 ? (
         <EmptyState icon={Sparkles} title="Nothing waiting for review" description="Every recent score was either confident enough to apply automatically, or has already been reviewed." />
       ) : (
