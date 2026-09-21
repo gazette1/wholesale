@@ -69,9 +69,14 @@ export type CashAdjustment = z.infer<typeof CashAdjustmentSchema>;
 export type RentalProjectionAssumptions = z.infer<typeof RentalProjectionAssumptionsSchema>;
 export type ProjectModelInput = z.infer<typeof ProjectModelInputSchema>;
 
+/** The Mac app's default tranches: three draws of a third each, the last taking what the first two leave. */
+function defaultDraws(timings: [number, number, number]): DrawTranche[] {
+  return [{ timingPercent: timings[0], fundingPercent: 1 / 3 }, { timingPercent: timings[1], fundingPercent: 1 / 3 }, { timingPercent: timings[2], fundingPercent: 1 - 2 * (1 / 3) }];
+}
+
 export function emptyProjectModel(): ProjectModelInput {
   return {
     startDate: null, initialCash: 0, loans: [], buyingFees: [], sellingFees: [], holdingCosts: [],
-    drawMode: "delayed", upfrontDraws: [], delayedDraws: [], useCustomRehabSchedule: false, rehabExpenseEvents: [], customCashEvents: [], rentalProjection: null,
+    drawMode: "delayed", upfrontDraws: defaultDraws([0.01, 0.33, 0.66]), delayedDraws: defaultDraws([0.25, 0.5, 0.75]), useCustomRehabSchedule: false, rehabExpenseEvents: [], customCashEvents: [], rentalProjection: null,
   };
 }

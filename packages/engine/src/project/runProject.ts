@@ -7,7 +7,7 @@ import { rentalProjection, type RentalProjectionResult } from "./rentalProjectio
 import { pendingModule, type ModuleResult, type ProjectContext } from "./types";
 
 /** Saved inside the outputs. Stays a preview until Ous approves the model. */
-export const PROJECT_MODEL_VERSION = "0.2.0-preview";
+export const PROJECT_MODEL_VERSION = "0.3.0-preview";
 
 export type ProjectFlipResult = {
   purchase: number; buyingCosts: number; repairs: number; holding: number;
@@ -43,8 +43,9 @@ export function runProject(input: ProjectModelInput, ctx: ProjectContext): Proje
 
   const otherNet = input.customCashEvents.reduce((a, e) => a + e.amount, 0);
   const knownCosts = ctx.purchasePrice + buyingFees.total + ctx.rehabEstimate + holding.total + sellingFees.total;
-  const totalProjectCosts = financing.total === null ? null : knownCosts + financing.total;
-  const netProfit = totalProjectCosts === null ? null : ctx.salePrice - totalProjectCosts + otherNet;
+  // Net other expenses count as a cost. Net other income raises the profit but does not lower the costs.
+  const totalProjectCosts = financing.total === null ? null : knownCosts + financing.total + Math.max(0, -otherNet);
+  const netProfit = financing.total === null ? null : ctx.salePrice - knownCosts - financing.total + otherNet;
   const ownerCash = cashFlow.status === "computed" ? cashFlow.value.totalOwnerCashRequired : null;
   const flip: ProjectFlipResult = {
     purchase: ctx.purchasePrice, buyingCosts: buyingFees.total, repairs: ctx.rehabEstimate, holding: holding.total, financing: financing.total,

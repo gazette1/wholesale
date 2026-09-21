@@ -39,5 +39,11 @@ export function monthStarts(holdMonths: number): number {
   return Math.max(0, Math.ceil(holdMonths - 1e-9));
 }
 
+/** Round to cents, half away from zero, like the Mac app's Decimal rounding. Cleans binary noise such as 1.005 stored as 1.00499. */
+export function round2(value: number): number {
+  const cents = Number((Math.abs(value) * 100).toPrecision(15));
+  return (Math.sign(value) || 1) * (Math.round(cents) / 100);
+}
+
 /** The weekly grid covers holds up to 120 months. */
 export const MAX_PROJECT_HOLD_MONTHS = 120;

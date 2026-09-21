@@ -25,7 +25,7 @@ export function projectRentalContext(bh: BuyAndHoldInput | null | undefined): Pr
   return {
     price: bh.salePrice,
     grossMonthlyRent: market > 0 ? market : current,
-    percentOfRentExpenses: bh.managementPct + bh.vacancyPct + bh.maintenancePct,
+    percentOfRentExpenses: bh.managementPct + bh.vacancyPct + bh.maintenancePct + bh.cashReservesPct,
     fixedMonthlyExpenses: bh.propertyTaxYear / 12 + bh.insuranceMonth + bh.gasElectricMonth + bh.waterMonth + bh.sewerMonth + bh.garbageMonth + bh.lawnSnowMonth,
     downPaymentPct: bh.downPaymentPct, closingCosts: bh.closingCosts, interestRate: bh.interestRate, loanTermYears: bh.loanTermYears,
     appreciationRate: bh.appreciationRate, rentGrowthRate: bh.rentGrowthRate,

@@ -2,12 +2,17 @@ import { addDays, parseIsoDate, roundUp, toIsoDate } from "../money";
 import { feeTotals } from "./fees";
 import { projectFinancing, type ProjectFinancingResult } from "./financing";
 import type { ProjectModelInput } from "./schemas";
-import { MAX_PROJECT_HOLD_MONTHS, monthStarts, pendingModule, type ModuleResult, type ProjectContext } from "./types";
+import { MAX_PROJECT_HOLD_MONTHS, monthStarts, pendingModule, round2, type ModuleResult, type ProjectContext } from "./types";
 
 export type CashWeek = { number: number; date: string; cashIn: number; cashOut: number; ending: number; minimumBalance: number };
 
+/** One dated line of the project, named the way the Mac app names it so the two lists can be compared line by line. */
+export type CashEvent = { label: string; date: string; amount: number };
+
 export type ProjectCashFlowResult = {
   weeks: CashWeek[];
+  /** Every nonzero event, sorted by date. */
+  events: CashEvent[];
   exitDate: string;
   minimumBalance: number;
   /** A negative low point is cash the owner must add on top of the initial cash. */
@@ -62,7 +67,7 @@ export function buildProjectTimeline(input: ProjectModelInput, ctx: ProjectConte
   const startDate = input.startDate.slice(0, 10);
   const months = monthStarts(ctx.holdMonths);
   const exitDate = addMonthsClamped(startDate, months);
-  const weekCount = Math.floor(daysBetween(startDate, exitDate) / 7) + 1;
+  const weekCount = Math.max(1, Math.ceil(daysBetween(startDate, exitDate) / 7));
   const weekDates = Array.from({ length: weekCount }, (_, i) => toIsoDate(addDays(parseIsoDate(startDate), i * 7)));
   const monthStartDates = Array.from({ length: months }, (_, m) => addMonthsClamped(startDate, m));
   const clampWeek = (week: number) => Math.min(weekCount, Math.max(1, week));
@@ -71,12 +76,17 @@ export function buildProjectTimeline(input: ProjectModelInput, ctx: ProjectConte
 
   const tranches = input.drawMode === "upfront" ? input.upfrontDraws : input.delayedDraws;
   const released = input.loans.map(() => 0);
-  const draws: ProjectDraw[] = tranches.map((d) => {
-    // Draw timing is a share of the hold rounded up to a whole week. A draw never releases more than the loan's rehab commitment.
+  // Each loan draws its rehab funding times the tranche shares, in cents. The last tranche takes whatever the others left,
+  // so the cents always add up. The share total is capped at 100 percent, which the validator already requires.
+  const shareTotal = Math.min(1, tranches.reduce((a, d) => a + d.fundingPercent, 0));
+  const targets = input.loans.map((l) => round2(l.rehabFunding * shareTotal));
+  const draws: ProjectDraw[] = tranches.map((d, j) => {
     const week = clampWeek(roundUp(d.timingPercent * weekCount, 0));
+    const last = j === tranches.length - 1;
     const byLoan = input.loans.map((l, i) => {
-      const amount = Math.max(0, Math.min(l.rehabFunding * d.fundingPercent, l.rehabFunding - (released[i] ?? 0)));
-      released[i] = (released[i] ?? 0) + amount;
+      const left = round2((targets[i] ?? 0) - (released[i] ?? 0));
+      const amount = Math.max(0, last ? left : Math.min(round2(l.rehabFunding * d.fundingPercent), left));
+      released[i] = round2((released[i] ?? 0) + amount);
       return amount;
     });
     return { week, date: weekDates[week - 1] as string, timingPercent: d.timingPercent, fundingPercent: d.fundingPercent, byLoan, total: byLoan.reduce((a, b) => a + b, 0) };
@@ -90,7 +100,7 @@ export function buildProjectTimeline(input: ProjectModelInput, ctx: ProjectConte
 
 /**
  * Rehab spend by week. A custom schedule places each dated expense in the week that contains its date.
- * Otherwise the spend is even across every week, with the cent adjustment in the final week.
+ * Otherwise each week but the last spends the estimate over the week count in cents, and the last week spends what is left.
  */
 export function rehabSpendByWeek(input: ProjectModelInput, ctx: ProjectContext, timeline: ProjectTimeline): number[] {
   const out = new Array<number>(timeline.weekCount).fill(0);
@@ -101,10 +111,14 @@ export function rehabSpendByWeek(input: ProjectModelInput, ctx: ProjectContext, 
     }
     return out;
   }
-  const totalCents = Math.round(ctx.rehabEstimate * 100);
-  const perWeekCents = Math.round(totalCents / timeline.weekCount);
-  for (let i = 0; i < timeline.weekCount - 1; i++) out[i] = perWeekCents / 100;
-  out[timeline.weekCount - 1] = (totalCents - perWeekCents * (timeline.weekCount - 1)) / 100;
+  const perWeek = round2(ctx.rehabEstimate / timeline.weekCount);
+  let spent = 0;
+  for (let i = 0; i < timeline.weekCount - 1; i++) {
+    const amount = Math.max(0, Math.min(perWeek, round2(ctx.rehabEstimate - spent)));
+    out[i] = amount;
+    spent = round2(spent + amount);
+  }
+  out[timeline.weekCount - 1] = round2(ctx.rehabEstimate - spent);
   return out;
 }
 
@@ -130,37 +144,62 @@ export function projectCashFlow(input: ProjectModelInput, ctx: ProjectContext, t
   const buying = feeTotals(input.buyingFees, ctx);
   const selling = feeTotals(input.sellingFees, ctx);
   const monthlyHolding = input.holdingCosts.reduce((a, c) => a + c.amount, 0);
-  const holdingTotal = monthlyHolding * t.monthStartWeeks.length;
+  const holdingTotal = monthlyHolding * t.monthStartDates.length;
   const rehabByWeek = rehabSpendByWeek(input, ctx, t);
   const rehabPaid = rehabByWeek.reduce((a, b) => a + b, 0);
-  const drawnTotal = t.rehabDrawnTotal.reduce((a, b) => a + b, 0);
   const otherNet = input.customCashEvents.reduce((a, e) => a + e.amount, 0);
 
+  const events: CashEvent[] = [];
+  const add = (label: string, date: string, amount: number) => { if (amount) events.push({ label, date: date.slice(0, 10), amount }); };
+  add("Purchase", t.startDate, -ctx.purchasePrice);
+  add("Buying costs", t.startDate, -buying.total);
+  add("Sale proceeds", t.exitDate, ctx.salePrice);
+  add("Selling costs", t.exitDate, -selling.total);
+  t.monthStartDates.forEach((date, m) => add(`Holding costs · month ${m + 1}`, date, -monthlyHolding));
+  input.loans.forEach((l, i) => {
+    const name = l.name || `Loan ${i + 1}`;
+    const cost = fin.loans[i];
+    add(`${name} · purchase funding`, t.startDate, l.purchaseFunding);
+    add(`${name} · points and fees`, t.startDate, -((cost?.pointsPaid ?? 0) + (cost?.fixedFees ?? 0)));
+    t.draws.forEach((d, j) => add(`${name} · rehab draw ${j + 1}`, d.date, d.byLoan[i] ?? 0));
+    t.monthStartDates.forEach((date, m) => add(`${name} · interest month ${m + 1}`, date, -(cost?.interestByMonth?.[m] ?? 0)));
+    add(`${name} · principal repayment`, t.exitDate, -(l.purchaseFunding + (t.rehabDrawnTotal[i] ?? 0)));
+  });
+  if (input.useCustomRehabSchedule) input.rehabExpenseEvents.forEach((e) => add("Rehab expense", e.date, -e.amount));
+  else rehabByWeek.forEach((amount, w) => add(`Rehab · week ${w + 1}`, t.weekDates[w] as string, -amount));
+  for (const e of input.customCashEvents) add(e.name || "Other cash event", e.date, e.amount);
+  events.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+
+  // The balance moves once per date, after every event on that date, and the low point is read at the same step.
+  // A dip inside a week therefore counts even when the week ends higher.
+  const initialCash = input.initialCash ?? 0;
   const cashIn = new Array<number>(t.weekCount).fill(0);
   const cashOut = new Array<number>(t.weekCount).fill(0);
-  const addIn = (week: number, amount: number) => { if (amount) cashIn[week - 1] = (cashIn[week - 1] ?? 0) + amount; };
-  const addOut = (week: number, amount: number) => { if (amount) cashOut[week - 1] = (cashOut[week - 1] ?? 0) + amount; };
-
-  addIn(1, fin.totalPurchaseFunding);
-  addOut(1, ctx.purchasePrice + buying.total + fin.pointsAndFees);
-  for (const d of t.draws) addIn(d.week, d.total);
-  rehabByWeek.forEach((amount, i) => addOut(i + 1, amount));
-  t.monthStartWeeks.forEach((week, m) => { addOut(week, monthlyHolding); addOut(week, fin.interestByMonth?.[m] ?? 0); });
-  addIn(t.weekCount, ctx.salePrice);
-  addOut(t.weekCount, selling.total + fin.totalPurchaseFunding + drawnTotal);
-  for (const e of input.customCashEvents) {
-    const week = weekIndexFor(t, e.date) + 1;
-    if (e.amount >= 0) addIn(week, e.amount); else addOut(week, -e.amount);
-  }
-
-  const initialCash = input.initialCash ?? 0;
-  const weeks: CashWeek[] = [];
+  const endingByWeek = new Array<number | null>(t.weekCount).fill(null);
+  const lowByWeek = new Array<number | null>(t.weekCount).fill(null);
   let balance = initialCash;
   let low = initialCash;
-  for (let i = 0; i < t.weekCount; i++) {
-    balance = balance + (cashIn[i] ?? 0) - (cashOut[i] ?? 0);
+  for (let k = 0; k < events.length;) {
+    const date = events[k]!.date;
+    let net = 0;
+    const week = weekIndexFor(t, date);
+    for (; k < events.length && events[k]!.date === date; k++) {
+      const amount = events[k]!.amount;
+      net += amount;
+      if (amount > 0) cashIn[week] = (cashIn[week] ?? 0) + amount; else cashOut[week] = (cashOut[week] ?? 0) - amount;
+    }
+    balance += net;
     if (balance < low) low = balance;
-    weeks.push({ number: i + 1, date: t.weekDates[i] as string, cashIn: cashIn[i] ?? 0, cashOut: cashOut[i] ?? 0, ending: balance, minimumBalance: low });
+    endingByWeek[week] = balance;
+    lowByWeek[week] = low;
+  }
+  const weeks: CashWeek[] = [];
+  let carryEnding = initialCash;
+  let carryLow = initialCash;
+  for (let i = 0; i < t.weekCount; i++) {
+    carryEnding = endingByWeek[i] ?? carryEnding;
+    carryLow = lowByWeek[i] ?? carryLow;
+    weeks.push({ number: i + 1, date: t.weekDates[i] as string, cashIn: cashIn[i] ?? 0, cashOut: cashOut[i] ?? 0, ending: carryEnding, minimumBalance: carryLow });
   }
 
   const additionalCashNeeded = Math.max(0, -low);
@@ -180,7 +219,7 @@ export function projectCashFlow(input: ProjectModelInput, ctx: ProjectContext, t
   return {
     status: "computed",
     value: {
-      weeks, exitDate: t.exitDate, minimumBalance: low, additionalCashNeeded, totalOwnerCashRequired: initialCash + additionalCashNeeded,
+      weeks, events, exitDate: t.exitDate, minimumBalance: low, additionalCashNeeded, totalOwnerCashRequired: initialCash + additionalCashNeeded,
       interest: fin.interest, pointsAndFees: fin.pointsAndFees, financingCosts: fin.interest + fin.pointsAndFees, cashProfit, reconciliation,
     },
   };

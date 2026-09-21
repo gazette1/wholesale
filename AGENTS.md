@@ -37,7 +37,7 @@ An acquisitions CRM with a deal analyzer for a residential wholesale and flip bu
 ## 4. What was built on 2026-09-21
 
 Engine (`packages/engine`)
-- `src/project/*` and `tests/projectModel.test.ts`: the project model for the deferred Mac app features (multi loan financing, fee bases, monthly holding lines, weekly project cash flow, drawn balance interest, 20 year projection). Opt in through `DealInput.project`, labeled preview, version `0.2.0-preview`. A test asserts every workbook output is identical with it on and off. 18 rules were inferred and are listed in `docs/MAC_PARITY.md` under "Inferred rules, verify against the Swift source". `ENGINE_VERSION` stays 0.3.0.
+- `src/project/*` and `tests/projectModel.test.ts`: the project model for the deferred Mac app features (multi loan financing, fee bases, monthly holding lines, weekly project cash flow, drawn balance interest, 20 year projection). Opt in through `DealInput.project`, labeled preview, version `0.3.0-preview`. A test asserts every workbook output is identical with it on and off. The cash flow and flip rules were read from the Mac binary and the rental projection is still partly inferred; see `docs/MAC_PARITY.md`, "Rules read from the Mac binary". `ENGINE_VERSION` stays 0.3.0.
 - `src/compsArv.ts`, `src/matchLearning.ts` with tests. Wiring edits in `index.ts`, `runDeal.ts`, `schemas.ts`, `validate.ts`.
 
 Database (`packages/db`)

@@ -1,6 +1,6 @@
 import type { ProjectTimeline } from "./cashFlow";
 import type { FinancingLoan } from "./schemas";
-import { monthStarts, type ProjectContext } from "./types";
+import { monthStarts, round2, type ProjectContext } from "./types";
 
 export type LoanCost = {
   name: string; commitment: number; purchaseFunding: number; rehabFunding: number;
@@ -31,7 +31,7 @@ export type ProjectFinancingResult = {
 };
 
 /**
- * Monthly interest is annual rate / 12, charged at each month start. Points are charged on the commitment.
+ * Monthly interest is annual rate / 12 on the balance, rounded to cents, charged at each month start. Points are charged on the commitment.
  * A drawn balance loan charges interest on the debt at month start: its purchase funding plus the rehab
  * released by every draw dated on or before that month start. It needs the calendar timeline to know that.
  */
@@ -43,11 +43,11 @@ export function projectFinancing(loans: FinancingLoan[], ctx: ProjectContext, ti
     let interest: number | null;
     let interestByMonth: number[] | null;
     if (l.interestBasis === "fullCommitment") {
-      interest = commitment * monthly * months;
-      interestByMonth = new Array<number>(months).fill(commitment * monthly);
+      interestByMonth = new Array<number>(months).fill(round2(commitment * monthly));
+      interest = interestByMonth.reduce((a, b) => a + b, 0);
     } else if (timeline) {
       const drawn = timeline.rehabDrawnAtMonthStart[i] ?? [];
-      interestByMonth = Array.from({ length: months }, (_, m) => (l.purchaseFunding + (drawn[m] ?? 0)) * monthly);
+      interestByMonth = Array.from({ length: months }, (_, m) => round2((l.purchaseFunding + (drawn[m] ?? 0)) * monthly));
       interest = interestByMonth.reduce((a, b) => a + b, 0);
     } else {
       interest = null;

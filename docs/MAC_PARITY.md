@@ -59,7 +59,7 @@ The rule that decided what to build: nothing may change a number that the golden
 | Undo and redo | Browser form state plus versions cover the need. Not built. |
 | Inspection worksheet PDF section | Not reconstructable from the binary. Needs the Swift source or a screenshot. |
 
-## Project model (engine 0.3.0, model 0.2.0-preview)
+## Project model (engine 0.3.0, model 0.3.0-preview)
 
 The deferred financing and cash flow features now have a home that cannot disturb the workbook numbers. `DealInput.project` is optional and absent by default. `runDeal()` passes it to `runProject()` in `packages/engine/src/project/` and returns the result as `outputs.project`. Nothing in that folder is read by `acquisitions()`, `wholesale()`, or the draw cash flow, and `tests/projectModel.test.ts` asserts that every workbook output is identical with the model on and off. In the analyzer it is the "Project model" input section and the "Project model" results tab, both labeled preview. The Flip P&L stays the number of record until Ous approves the model.
 
@@ -83,28 +83,34 @@ Rules the modules follow, as the Mac reference states them. Check them against t
 - A negative ending balance is additional owner cash required. Outputs: interest, points and fees, financing costs, cash profit, exit date, and a cash profit reconciliation.
 - Projection: fixed dollar operating expenses stay constant, percentage expenses grow with rent, estimated tax savings sit outside operating cash flow. The return denominator is down payment plus closing costs plus owner funded initial rehab.
 
-### Inferred rules, verify against the Swift source
+### Rules read from the Mac binary (2026-09-21)
 
-The reference leaves these gaps. Each one was filled with the simplest reading that keeps the model self consistent, and each one is pinned by a test in `packages/engine/tests/projectModel.test.ts`. None of them touches a workbook number.
+Russ disassembled the arm64 slice of the Mac app and read `Calculations.cashFlow`, `flip`, `monthDate`, the `CashFlowResult` and `FlipResult` getters, and the default draw tranches. Model `0.3.0-preview` follows them. "Changed" marks a rule that `0.2.0-preview` had guessed differently. Each rule is pinned by a test in `packages/engine/tests/projectModel.test.ts`, and none of them touches a workbook number.
 
-1. The grid runs from the start date to the start date plus the hold's month starts, so the number of weeks is the days in that span divided by 7, rounded down, plus one. Week 1 is the start date and every later week is seven days after the one before, which puts the exit date inside the last week.
-2. A dated item is charged in the week that contains its date. A date outside the hold is clamped to the first or the last week. The validator already reports it as an error.
-3. The purchase price, the buying fees, the loan points, and the lender fixed fees are all charged in week 1, the week the purchase loans fund.
-4. The sale proceeds, the selling fees, and the loan payoff all land in the last week. The payoff is the purchase funding plus the rehab the draws actually released, not the full commitment.
-5. Draw timing rounds up against the number of weeks in the grid. A timing of 0 percent moves to week 1 rather than to week 0.
-6. A draw releases its funding share of each loan's rehab commitment, capped so the running total for that loan never passes the commitment. Draws past the commitment release nothing.
-7. Debt at a month start is the loan's purchase funding plus every draw dated on or before that month start. Purchase funding is drawn in full on day one.
-8. Even rehab spend rounds the estimate to whole cents, divides by the week count to the nearest cent for every week but the last, and puts the remainder in the last week, so the schedule sums to the estimate exactly.
-9. Initial owner cash is the opening balance of the grid, not a cash in row. Cash profit is the final ending balance less that opening balance, which is what makes the reconciliation equal the project net profit.
-10. Additional owner cash is the lowest ending balance when that balance is negative. It is not injected back into the rows, so it changes the funding need and not the profit.
-11. Return on owner cash is the project net profit over initial cash plus additional cash. It reads "Not available yet" when that total is zero, which happens when the loans fund the whole project.
-12. A hold longer than 120 months leaves the weekly cash flow unavailable with a reason rather than truncating the grid.
-13. The projection uses market rent, and current rent when no market rent is entered. Year 1 is the rent as entered and each later year grows it by the rent growth rate.
-14. The projection's percentage operating expenses are management plus vacancy plus maintenance from Buy and hold. The fixed dollar ones are property tax, insurance, gas and electric, water, sewer, garbage, and lawn and snow.
-15. Depreciation stops when the depreciable basis is used up. A part year at the end takes what is left.
-16. Estimated tax savings are the marginal tax rate on depreciation plus that year's mortgage interest, the same two deductions the workbook uses on the Buy and Hold sheet.
-17. Appreciation compounds on the property value from the year before, starting at the Buy and hold sale price.
-18. Debt service, mortgage interest, and principal paydown are all zero once the loan term is over.
+1. Weeks. The exit is the start date plus the hold in calendar months, day of month clamped. The week count is the days from start to exit divided by 7, rounded up. Week k is dated start plus 7 x (k - 1) days. Events on the exit date land in the last week. Changed: the count was rounded down plus one.
+2. Event dates. Purchase, buying costs, each loan's purchase funding, and each loan's points and fees sit on the start date. Sale proceeds, selling costs, and each loan's principal repayment (purchase funding plus the draws actually released) sit on the exit date. Holding costs and loan interest sit on each month start, start plus m months. Custom cash events and scheduled rehab expenses sit on their own dates. Zero amounts are dropped. The engine returns the full list as `cashFlow.events` with the Mac app's names (`Purchase`, `Hard money · rehab draw 2`, `Holding costs · month 3`, `Rehab · week 5`), so it can be compared with the Mac app line by line. Confirmed.
+3. Even rehab spend. Each week but the last spends the estimate divided by the week count, rounded to cents half away from zero, capped at what is left. The last week spends the rest. Changed: the estimate was rounded to cents first and there was no cap.
+4. Draw timing. The draw week is the timing percent times the week count, rounded up, clamped to the first and last week. Timings of 0 and 1 percent fall on the start date. Confirmed.
+5. Draw amounts. Each draw releases the loan's rehab funding times its share, rounded to cents, capped at the rehab funding times the share total less what is already drawn. The last tranche takes the rest, so the cents always add up. The same tranche list applies to every loan. Changed: amounts were not rounded and the last tranche did not absorb the cents. One deliberate difference: the web caps the share total at 100 percent inside the math. The Mac app rejects a total above 100 percent in validation, so only an input the Mac app refuses can differ.
+6. Default tranches. Delayed draws at 25, 50, and 75 percent of the hold, up front draws at 1, 33, and 66 percent, a third of the funding each. Changed: new models started with no tranches.
+7. Interest. Each month start charges the balance times the annual rate over 12, rounded to cents. There is one charge per month start and none at exit, so the first month is charged on the start date. A full commitment loan's balance is its purchase plus rehab funding. A drawn balance loan's balance is its purchase funding plus every draw dated on or before that month start. Points are charged on the full commitment. Changed: interest was not rounded to cents each month.
+8. Running balance and owner cash. Events are sorted and grouped by date. The balance starts at initial cash and moves once per date, and the low point is read at the same step, so a dip inside a week counts. Additional owner cash is the low point below zero, total owner cash is initial plus additional, and cash profit is the ending balance less initial cash. Changed: the low point was read at the end of each week.
+9. Flip. Holding is the monthly total times the hold months. Financing is interest plus points and fees. Net profit is sale less purchase, repairs, holding, financing, buying, and selling, plus other net. Total costs add net other expenses (other net below zero) but net other income does not lower them. Return on all costs, on purchase plus repairs, and on total owner cash are each blank unless the denominator is above zero. Changed: holding used month starts, and total costs left out net other expenses.
+10. Week rows carry cash in (the positive events), cash out (the negative events, shown as a positive number), the ending balance, and the running low point to date. Inferred by the reader of the binary from structure, not traced register by register.
+
+One difference the web keeps on purpose: the web accepts a part month hold because the workbook does, while the Mac app takes whole months only. For a part month hold the cash flow books one holding charge per month start and the flip charges the monthly total times the exact hold, so the two differ by the part month. For whole month holds they match to the cent.
+
+### Rental projection, partly read from the binary
+
+Read: percentage costs (vacancy, management, maintenance, and reserves) are a percent of the case's gross rent, not rent net of vacancy; changed, reserves were left out. Fixed costs are annual tax plus 12 x (insurance plus utilities plus other); the web sums the workbook's utility lines into that. The loan runs through the same amortization as the Loan tab with its payment rows grouped by year. Rent and value grow by their rates each year. Depreciation is the basis over its years, with a check on the years.
+
+Still open, with the rule the web uses until the rest of `rental` is read:
+- Tax savings: the marginal rate times depreciation plus that year's mortgage interest.
+- Appreciation: compounds on the prior year's value, starting at the Buy and hold sale price.
+- After the loan term: debt service, interest, and paydown are zero.
+- Depreciation ends when the basis is used up, with a part year at the end.
+- Rent case: market rent, current rent when no market rent is entered. The Mac app shows current and market cases side by side, and which one feeds its projection is not read yet.
+- Whether cash on cash and DSCR round.
 
 `runDeal()` passes the rental context into `runProject()` through `projectRentalContext(inputs.buyAndHold)`. The projection is connected to the Buy and hold inputs.
 
