@@ -1,14 +1,21 @@
 import React from "react";
 import { Document, Page, Text, View, StyleSheet, Image, renderToBuffer } from "@react-pdf/renderer";
-import type { DealOutputs } from "@/lib/deal-run";
 
 export type PackageData = {
   branding: { companyName?: string; primaryColor?: string; disclosure?: string; phone?: string; email?: string; logoUrl?: string };
   property: { address: string; cityStateZip: string; type: string | null; beds: string | null; baths: string | null; sqft: number | null; yearBuilt: number | null; lot: number | null; county: string | null; photos: { url: string; caption?: string }[] };
   summary: string | null;
   notes: string | null;
-  outputs: DealOutputs;
-  inputs: { arv: number; purchasePrice: number; repairCosts: number; assignmentFee: number; investorBuyPrice: number; holdMonths: number };
+  /**
+   * Only what a buyer may see. The contract price, the spread, the max allowable offer, and the assignment fee are
+   * left out on the server, so they never reach the component that renders the public page or the PDF.
+   */
+  outputs: {
+    acquisitions: { repairCosts: number; financing: { total: number }; holding: { total: number }; buying: { total: number }; selling: { total: number } };
+    wholesale: { investorBuyPrice: number; investorArvPct: number };
+    buyAndHold: { current: { grossRents: number } } | null;
+  };
+  inputs: { arv: number; repairCosts: number; investorBuyPrice: number; holdMonths: number };
   report: { avm?: number; owner?: string; yearsOwned?: number; taxAmount?: number; assessed?: number; flags: string[]; rentEstimate?: number | null; lastSale?: { date?: string; price?: number } } | null;
   comps: { address: string; soldPrice: number | null; soldAt: string | null; sqft: number | null; distanceMi: number | null }[];
   sections: { financials: boolean; comps: boolean; report: boolean; rehab: boolean; notes: boolean };

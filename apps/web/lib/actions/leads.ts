@@ -312,7 +312,11 @@ export async function createTag(form: FormData): Promise<ActionResult> {
   const kind = (["lead", "buyer", "issue"].includes(kindRaw) ? kindRaw : "lead") as "lead";
   const colorRaw = String(form.get("color") || "#6366f1");
   const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : "#6366f1";
-  await db.insert(tags).values({ orgId: session.orgId, name, kind, color }).onConflictDoNothing();
+  const existing = await db.query.tags.findFirst({ where: and(eq(tags.orgId, session.orgId), eq(tags.name, name), eq(tags.kind, kind)) });
+  if (existing) return { ok: false, error: `A ${kind} tag named "${name}" already exists.` };
+  const [created] = await db.insert(tags).values({ orgId: session.orgId, name, kind, color }).onConflictDoNothing().returning();
+  if (!created) return { ok: false, error: `A tag named "${name}" already exists.` };
+  await audit(session, { entityType: "tag", entityId: created.id, action: "create", after: { name, kind, color } });
   revalidatePath("/settings"); revalidatePath("/leads");
   return { ok: true };
 }
@@ -404,6 +408,15 @@ export async function updateOfferStatus(offerId: string, leadId: string, status:
     const stage = await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.orgId, session.orgId), eq(pipelineStages.key, "under_contract")) });
     if (stage) await moveLeadStage(leadId, stage.id);
   }
+  if (status === "sent" && offer.status === "draft") {
+    // Same rule as recording an offer as sent: move forward to Offer Sent, never backward.
+    const [target, lead] = await Promise.all([
+      db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.orgId, session.orgId), eq(pipelineStages.key, "offer_sent")) }),
+      db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) }),
+    ]);
+    const current = lead ? await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.id, lead.stageId), eq(pipelineStages.orgId, session.orgId)) }) : null;
+    if (target && current && current.position < target.position) await moveLeadStage(leadId, target.id);
+  }
   revalidatePath(`/leads/${leadId}`);
   return { ok: true };
 }
@@ -475,19 +488,23 @@ export async function deleteLead(leadId: string): Promise<never | ActionResult> 
   const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
   if (!lead) return { ok: false, error: "Lead not found." };
   try {
+    // One transaction: if the property or contact cannot go, the lead stays too, and the message is true.
+    type Tx = typeof db;
+    await (db as unknown as { transaction: (fn: (tx: Tx) => Promise<void>) => Promise<void> }).transaction(async (tx) => {
+      await tx.delete(leads).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
+      const otherLeadOnProperty = await tx.query.leads.findFirst({ where: and(eq(leads.propertyId, lead.propertyId), eq(leads.orgId, session.orgId)) });
+      if (!otherLeadOnProperty) await tx.delete(properties).where(and(eq(properties.id, lead.propertyId), eq(properties.orgId, session.orgId)));
+      if (lead.primaryContactId) {
+        const [otherLead, otherLink] = await Promise.all([
+          tx.query.leads.findFirst({ where: and(eq(leads.primaryContactId, lead.primaryContactId), eq(leads.orgId, session.orgId)) }),
+          tx.query.propertyContacts.findFirst({ where: and(eq(propertyContacts.contactId, lead.primaryContactId), eq(propertyContacts.orgId, session.orgId)) }),
+        ]);
+        if (!otherLead && !otherLink) await tx.delete(contacts).where(and(eq(contacts.id, lead.primaryContactId), eq(contacts.orgId, session.orgId)));
+      }
+    });
     await audit(session, { entityType: "lead", entityId: leadId, action: "delete", before: lead });
-    await db.delete(leads).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
-    const otherLeadOnProperty = await db.query.leads.findFirst({ where: and(eq(leads.propertyId, lead.propertyId), eq(leads.orgId, session.orgId)) });
-    if (!otherLeadOnProperty) await db.delete(properties).where(and(eq(properties.id, lead.propertyId), eq(properties.orgId, session.orgId)));
-    if (lead.primaryContactId) {
-      const [otherLead, otherLink] = await Promise.all([
-        db.query.leads.findFirst({ where: and(eq(leads.primaryContactId, lead.primaryContactId), eq(leads.orgId, session.orgId)) }),
-        db.query.propertyContacts.findFirst({ where: and(eq(propertyContacts.contactId, lead.primaryContactId), eq(propertyContacts.orgId, session.orgId)) }),
-      ]);
-      if (!otherLead && !otherLink) await db.delete(contacts).where(and(eq(contacts.id, lead.primaryContactId), eq(contacts.orgId, session.orgId)));
-    }
   } catch (err) {
-    return { ok: false, error: friendlyError(err, "Could not delete the lead. It may be referenced by a record that must be removed first.") };
+    return { ok: false, error: friendlyError(err, "Could not delete the lead. Nothing was removed.") };
   }
   revalidatePath("/leads"); revalidatePath("/pipeline"); revalidatePath("/dashboard"); revalidatePath("/analyzer");
   redirect("/leads");

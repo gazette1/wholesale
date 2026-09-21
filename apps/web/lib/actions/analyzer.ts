@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { dealAnalyses, activities, leads, dealPackages, dealSubmissions } from "@dealcalc/db";
 import { DealInputSchema, type DealInput } from "@dealcalc/engine";
 import { getDb } from "../db";
@@ -19,7 +19,8 @@ async function handOffPrimary(db: Database, orgId: string, propertyId: string, e
   const candidates = await db.select({ id: dealAnalyses.id, status: dealAnalyses.status }).from(dealAnalyses)
     .where(and(eq(dealAnalyses.propertyId, propertyId), eq(dealAnalyses.orgId, orgId), isNull(dealAnalyses.trashedAt), ne(dealAnalyses.id, excludeId))).orderBy(desc(dealAnalyses.version));
   const next = candidates.find((c) => c.status === "approved_for_offer") ?? candidates.find((c) => c.status !== "rejected") ?? null;
-  if (next) await db.update(dealAnalyses).set({ isPrimary: true }).where(and(eq(dealAnalyses.id, next.id), eq(dealAnalyses.orgId, orgId)));
+  // Bookkeeping, not an edit: keep updated_at so the Updated column and the recent sort reflect real changes.
+  if (next) await db.update(dealAnalyses).set({ isPrimary: true, updatedAt: sql`${dealAnalyses.updatedAt}` }).where(and(eq(dealAnalyses.id, next.id), eq(dealAnalyses.orgId, orgId)));
 }
 
 /** Schema errors in words a person can act on. Rates are stored as fractions, so 0.5 reads as 50%. */
@@ -38,6 +39,9 @@ export async function createAnalysis(propertyId: string, leadId: string | null):
   const session = await requireSession();
   requireCan(session, "analysis:write");
   const db = await getDb();
+  // A double click, a retry, or two tabs: if this person made an analysis for this property in the last 5 seconds, open that one.
+  const recent = await db.query.dealAnalyses.findFirst({ where: and(eq(dealAnalyses.propertyId, propertyId), eq(dealAnalyses.orgId, session.orgId), eq(dealAnalyses.createdBy, session.profileId), gt(dealAnalyses.createdAt, new Date(Date.now() - 5000))), orderBy: desc(dealAnalyses.createdAt) });
+  if (recent) redirect(`/analyzer/${recent.id}`);
   const inputs = await buildDefaultInputs(session.orgId, propertyId);
   const version = await nextVersion(propertyId);
   const [row] = await db.insert(dealAnalyses).values({

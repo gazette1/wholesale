@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { buyers, buyerCriteria, buyerPurchases, dealSubmissions, dealAnalyses, dealPackages, activities } from "@dealcalc/db";
-import { judgmentProvider, inferBuyerCriteria } from "@dealcalc/integrations";
+import { judgmentProvider, inferBuyerCriteria, normalizePhone } from "@dealcalc/integrations";
 import { getDb } from "../db";
 import { requireSession, requireCan } from "../auth";
 import { audit } from "../audit";
@@ -25,8 +25,10 @@ function contactFields(form: FormData): { error: string } | { firstName: string;
   if (!firstName) return { error: "First name is required." };
   const email = textField(form.get("email"), 254);
   if (email && !isEmail(email)) return { error: "Enter a valid email address, or leave it blank." };
-  const phone = textField(form.get("phone"), 40);
-  if (phone && phone.replace(/\D/g, "").length < 7) return { error: "Enter a phone number with at least 7 digits, or leave it blank." };
+  const phoneRaw = textField(form.get("phone"), 40);
+  if (phoneRaw && phoneRaw.replace(/\D/g, "").length < 7) return { error: "Enter a phone number with at least 7 digits, or leave it blank." };
+  // Same stored format as lead phones, so tel links and texting agree. Numbers that are not US 10 digit stay as typed.
+  const phone = phoneRaw ? normalizePhone(phoneRaw) ?? phoneRaw : null;
   return {
     firstName, lastName: textField(form.get("lastName"), 80), company: textField(form.get("company"), 120), phone, email: email ? email.toLowerCase() : null,
     website: textField(form.get("website"), 200), source: textField(form.get("source"), 120), notes: textField(form.get("notes"), 8000),

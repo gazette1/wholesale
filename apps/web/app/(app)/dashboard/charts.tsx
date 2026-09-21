@@ -8,7 +8,7 @@ export function SourceChart({ data }: { data: { source: string; n: number }[] })
   // Show the ten largest sources and fold the rest into one bar, with a row of height per bar so every label fits.
   const top = data.slice(0, 10);
   const rest = data.slice(10).reduce((a, d) => a + d.n, 0);
-  const rows = rest > 0 ? [...top, { source: `${data.length - 10} more sources`, n: rest }] : top;
+  const rows = rest > 0 ? [...top, { source: data.length - 10 === 1 ? "1 more source" : `${data.length - 10} more sources`, n: rest }] : top;
   return (
     <div style={{ height: Math.max(120, rows.length * 26 + 16) }}>
       <ResponsiveContainer width="100%" height="100%">

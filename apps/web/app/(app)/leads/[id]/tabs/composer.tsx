@@ -42,7 +42,7 @@ export function Composer({ leadId, contacts, templates }: { leadId: string; cont
           </Select>
         </Field>
       </div>
-      {noneEligible ? <Alert tone="bad">{channel === "sms" ? "Texting is blocked for this lead" : "Email is blocked for this lead"}: {contacts.map((c) => `${c.name} ${blockedReason(c, channel)}`).join("; ")}.</Alert> : null}
+      {noneEligible ? <Alert tone="bad">{channel === "sms" ? "Texting is blocked for this lead" : "Email is blocked for this lead"}. {contacts.map((c) => { const why = blockedReason(c, channel); return why === "opted out of SMS" ? `${c.name} opted out of SMS` : why === "marked do not contact" ? `${c.name} is marked do not contact` : `${c.name} has ${why}`; }).join(". ")}.</Alert> : null}
       <Field label="Template"><Select name="templateId" value={templateId} onChange={(e) => { const t = usable.find((x) => x.id === e.target.value); setTemplateId(e.target.value); if (t) { setBody(t.body); setSubject(t.subject ?? ""); } }}><option value="">Write from scratch</option>{usable.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
       {channel === "email" ? <Field label="Subject"><Input name="subject" value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} required /></Field> : null}
       <Field label="Message" hint="Merge fields: {{first_name}}, {{property_address}}, {{sender_name}}"><Textarea name="body" value={body} maxLength={channel === "sms" ? 1600 : 20000} onChange={(e) => setBody(e.target.value)} required placeholder="Hi {{first_name}}, this is {{sender_name}} about {{property_address}}..." className="min-h-[110px]" /></Field>

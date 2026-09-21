@@ -39,8 +39,16 @@ export async function packageData(pkgId: string, opts: { byToken?: boolean } = {
     property: { address: property.addressLine1, cityStateZip: `${property.city}, ${property.state} ${property.postalCode}`, type: property.propertyType, beds: property.beds, baths: property.baths, sqft: property.sqft, yearBuilt: property.yearBuilt, lot: property.lotSqft, county: property.county, photos: property.photos },
     summary: property.notes,
     notes: analysis.notes,
-    outputs,
-    inputs: { arv: outputs.effectiveArv ?? inputs.acquisitions.arv, purchasePrice: inputs.acquisitions.purchasePrice, repairCosts: outputs.acquisitions?.repairCosts ?? 0, assignmentFee: inputs.wholesale?.assignmentFee ?? Math.abs(inputs.acquisitions.assignmentFee), investorBuyPrice: outputs.wholesale?.investorBuyPrice ?? 0, holdMonths: inputs.acquisitions.holdMonths },
+    outputs: {
+      acquisitions: {
+        repairCosts: outputs.acquisitions?.repairCosts ?? 0,
+        financing: { total: outputs.acquisitions?.financing?.total ?? 0 }, holding: { total: outputs.acquisitions?.holding?.total ?? 0 },
+        buying: { total: outputs.acquisitions?.buying?.total ?? 0 }, selling: { total: outputs.acquisitions?.selling?.total ?? 0 },
+      },
+      wholesale: { investorBuyPrice: outputs.wholesale?.investorBuyPrice ?? 0, investorArvPct: outputs.wholesale?.investorArvPct ?? 0 },
+      buyAndHold: outputs.buyAndHold ? { current: { grossRents: outputs.buyAndHold.current.grossRents } } : null,
+    },
+    inputs: { arv: outputs.effectiveArv ?? inputs.acquisitions.arv, repairCosts: outputs.acquisitions?.repairCosts ?? 0, investorBuyPrice: outputs.wholesale?.investorBuyPrice ?? 0, holdMonths: inputs.acquisitions.holdMonths },
     report: report ? { avm: report.normalized.valuation.avm, owner: report.normalized.owner.names[0], yearsOwned: report.normalized.owner.yearsOwned, taxAmount: report.normalized.tax.taxAmount, assessed: report.normalized.tax.assessedValue, flags: report.normalized.distress.flags.map((f) => f.replace(/_/g, " ")), rentEstimate: report.normalized.valuation.rentEstimate ?? null, lastSale: report.normalized.transactions[0] ? { date: report.normalized.transactions[0].date, price: report.normalized.transactions[0].price } : undefined } : null,
     comps: compRows.map((c) => ({ address: c.address, soldPrice: c.soldPrice ? Number(c.soldPrice) : null, soldAt: c.soldAt ? shortDate(c.soldAt) : null, sqft: c.sqft, distanceMi: c.distanceMi ? Number(c.distanceMi) : null })),
     sections: sections as PackageData["sections"],

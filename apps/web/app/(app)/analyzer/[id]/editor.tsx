@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Alert } from "@/components/ui/misc";
+import { ActionButton } from "@/components/ui/action-form";
 import { Outputs } from "./outputs";
 import { LockedContext, NumField, SectionTitle } from "./fields";
 import { OffersSection, RehabSection, LoanSection, defaultOffers, type Patch } from "./sections";
@@ -258,7 +259,7 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
               {section === "loan" ? <LoanSection inputs={inputs} patch={patch} /> : null}
             </CardBody>
           </Card>
-          {canDelete ? <form action={deleteAction as unknown as (form: FormData) => void} onSubmit={(e) => { if (!window.confirm("Delete this analysis version for good? A version with a deal package or a record of buyers it was sent to cannot be deleted here; move it to trash from the analyzer list instead.")) e.preventDefault(); }}><Button type="submit" variant="ghost" size="sm" className="text-bad">Delete version</Button></form> : null}
+          {canDelete ? <ActionButton action={deleteAction as () => Promise<ActionResult>} variant="ghost" size="sm" className="text-bad" confirm="Delete this analysis version for good? A version with a deal package or a record of buyers it was sent to cannot be deleted here; move it to trash from the analyzer list instead.">Delete version</ActionButton> : null}
         </div>
 
         <div className="xl:col-span-3 min-w-0">

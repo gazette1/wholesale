@@ -12,9 +12,10 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   const session = await requireSession();
   const sp = await searchParams;
   const [stages, rows, team] = await Promise.all([listStages(session.orgId), boardLeads(session.orgId, sp.assigned), listProfiles(session.orgId)]);
+  const openCount = rows.filter((r) => r.status === "open").length;
   return (
     <>
-      <PageHeader title="Pipeline" description={`${rows.length} open leads. Click a card for a quick view. Drag a card to change its stage.`} actions={
+      <PageHeader title="Pipeline" description={`${openCount} open ${openCount === 1 ? "lead" : "leads"}${rows.length > openCount ? `, plus ${rows.length - openCount} closed or dead in the last 60 days` : ""}. Click a card for a quick view. Drag a card to change its stage.`} actions={
         <>
           <form className="flex items-center gap-2" method="get">
             <select name="assigned" aria-label="Show leads assigned to" key={sp.assigned ?? "everyone"} defaultValue={sp.assigned ?? ""} className="h-8 rounded-md border border-border bg-surface px-2 text-[13px]">

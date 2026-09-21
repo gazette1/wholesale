@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions/leads";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
+import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
 type Action = (form: FormData) => Promise<ActionResult>;
 
@@ -114,15 +116,17 @@ export function ActionButton({ action, children, variant = "outline", size = "sm
  */
 export function SubmitOnce({ children, variant = "primary", size = "md", className }: { children: React.ReactNode; variant?: ButtonProps["variant"]; size?: ButtonProps["size"]; className?: string }) {
   const [clicked, setClicked] = useState(false);
-  const ref = useRef<HTMLButtonElement>(null);
+  // A ref, not state: two clicks in the same tick both see the state from the last render.
+  const fired = useRef(false);
   return (
-    <Button ref={ref} type="submit" variant={variant} size={size} className={className} loading={clicked}
+    <Button type="submit" variant={variant} size={size} className={cn(className, clicked && "pointer-events-none opacity-70")} aria-disabled={clicked}
       onClick={(e) => {
-        if (clicked) { e.preventDefault(); return; }
-        // Let the submit start first; disabling the button synchronously would cancel it.
-        setTimeout(() => setClicked(true), 0);
+        if (fired.current) { e.preventDefault(); return; }
+        fired.current = true;
+        // The button is not disabled outright, because disabling it inside the click would cancel the submit it just started.
+        setClicked(true);
         // If the action fails without navigating, give the control back.
-        setTimeout(() => setClicked(false), 8000);
-      }}>{children}</Button>
+        setTimeout(() => { fired.current = false; setClicked(false); }, 8000);
+      }}>{clicked ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}{children}</Button>
   );
 }
