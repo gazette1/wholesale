@@ -9,7 +9,7 @@ Internal system for a residential wholesale and flip operation: seller lead pipe
 | `apps/web` | Next.js 15 app. Every screen, server action, webhook, and the PDF renderer. No math outside the engine. |
 | `packages/engine` | Pure TypeScript calculators ported from the workbook with golden tests. Runs in the browser and on the server. |
 | `packages/db` | Drizzle schema, SQL migrations, seed data, PGlite fallback for local work. |
-| `packages/integrations` | Provider boundaries with real and mock adapters: RealEstateAPI, Twilio, Resend, TypeSafe Jev, file storage. |
+| `packages/integrations` | Provider boundaries with real and mock adapters: RealEstateAPI, Twilio SMS and voice, Resend, TypeSafe Jev, file storage. |
 | `spec/` | Workbook extraction, formula spec, anomalies, golden fixtures. Never hand edited. |
 | `docs/` | Architecture, decisions, CRM proposal, integrations guide, implementation plan, and `MAC_PARITY.md` (what came over from the Mac app, what did not, and why). |
 | `tools/` | `extract_workbook.py`, rerun when a new workbook arrives. |
@@ -79,7 +79,25 @@ Other software (Zapier, Make, web forms, dialers, spreadsheets) connects through
 4. Point Twilio and Resend webhooks at the Vercel URL.
 5. Team members sign up at `/login?mode=signup` with the email an admin added under Settings, Team.
 
-Desktop installers for Mac and Windows come from wrapping the deployed URL with Tauri (Phase 2 of `docs/IMPLEMENTATION_PLAN.md`).
+## Desktop app
+
+`apps/desktop` wraps the deployed URL with Tauri 2. It is a scaffold: the JavaScript dependencies are installed, and no installer has been produced, because Rust is not on this machine.
+
+The window URL is read at compile time from `DEALCALC_APP_URL`, with the demo URL as the default, so an installer is pinned to the environment it was built for. The updater plugin is configured but `active` is false until signing keys exist.
+
+The package scripts are named `desktop:dev` and `desktop:build` rather than `dev` and `build` so that the workspace wide `pnpm build` does not try to run a Tauri build.
+
+Prerequisites: Rust (rustup) on both platforms, plus the WebView2 runtime and the WiX toolset on Windows, and Xcode command line tools on macOS.
+
+```bash
+pnpm install
+# Windows, produces target/release/bundle/msi/*.msi
+DEALCALC_APP_URL=https://your-app.vercel.app pnpm --filter desktop desktop:build
+# macOS, produces target/release/bundle/dmg/*.dmg. This must run on a Mac.
+DEALCALC_APP_URL=https://your-app.vercel.app pnpm --filter desktop desktop:build
+```
+
+A `.dmg` can only be built on macOS, so the partner's Mac produces that one. Auto update needs a signing key pair (`pnpm --filter desktop tauri signer generate`), the public key in `tauri.conf.json`, and a release endpoint; see "Waiting on Russ" in `docs/IMPLEMENTATION_PLAN.md`.
 
 ## Tests
 
@@ -87,8 +105,12 @@ Desktop installers for Mac and Windows come from wrapping the deployed URL with 
 pnpm test
 ```
 
-Engine: 64 tests. The golden and edge tests pin every workbook calculator to the spreadsheet's cached values; the rest cover the additions that are not in the workbook (quick offer tiers, comparable average, seller value score, rehab source, loan schedule, validation, the deal runner). Database: schema, seed, and the migration ledger on PGlite. Integrations: provider mapping, signature verification, judgment parsing, CSV, webhook signing, URL policy, lead payload parsing.
+Engine: 135 tests. The golden and edge tests pin every workbook calculator to the spreadsheet's cached values; the rest cover the additions that are not in the workbook (quick offer tiers, comparable average, seller value score, rehab source, loan schedule, validation, the deal runner, and the project model, including a test that the workbook outputs are identical with the project model on and off). Database: 8 tests covering schema, seed, and the migration ledger on PGlite. Integrations: provider mapping, signature verification, judgment parsing, CSV, webhook signing, URL policy, lead payload parsing, and the voice boundary (70 tests).
 
 ## Writing rules for documents in this repo
 
 No em dashes, no exclamation points, plain sentences. Thousands as M and millions as MM in financial documents.
+
+## Browser verification
+
+Run `pnpm --filter web test:e2e` with Microsoft Edge installed. Playwright starts a local server on port 3107, seeds a fresh `.pglite/e2e-*` database, disables hosted authentication and storage, and forces all providers to mocks. It refuses to reuse an existing server. Browser tests run separately from `pnpm test` and are not yet in CI. Traces from failed tests and generated package PDFs are under `apps/web/test-results/`.

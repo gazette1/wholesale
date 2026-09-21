@@ -59,6 +59,42 @@ Invoke-WebRequest -Method Post -Uri "http://localhost:3000/api/webhooks/twilio/s
 
 Security: the mock adapter does not verify a signature, so in mock mode these routes accept requests from anyone who can reach them. That is acceptable on a developer machine and nowhere else. A public deployment must either configure the real provider (Twilio and Resend verify signatures) or keep these routes closed. The code enforces the second option: when `NODE_ENV` is `production` and the provider is the mock, the three webhook routes return `401` unless the request carries the header `X-Webhook-Secret` with the value of the `MOCK_WEBHOOK_SECRET` environment variable. When `MOCK_WEBHOOK_SECRET` is unset in production the routes always return `401`. `DEMO_MODE` does not open them; the demo does not need inbound webhooks.
 
+## Connecting voice
+
+Interface `VoiceProvider` in `packages/integrations/src/voice`. The Twilio adapter uses the REST API and builds TwiML as text. No SDK. Calls are stored in the `calls` table and shown on the lead page under Calls.
+
+Two ways to place a call:
+
+- Bridge call (works now). The Call button posts to the Twilio Calls endpoint. Twilio rings the team member's own phone, and when they answer it dials the seller from the team member's Twilio number. Needs the account keys only.
+- Browser call (not finished). The token route and the TwiML route exist and are tested, but the Twilio Voice JS SDK is not installed, so there is no softphone in the page yet. See the `TODO(phase2)` note in `apps/web/app/(app)/leads/[id]/tabs/calls.tsx`.
+
+Environment variables:
+
+| Variable | Needed for | Notes |
+|---|---|---|
+| `VOICE_PROVIDER` | both | `mock` (default) or `twilio` |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | both | Shared with SMS. With either one missing the mock is used. |
+| `TWILIO_FROM_NUMBER` | both | Caller ID when the team member has no Twilio number of their own under Settings, Team |
+| `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` | browser calls | A standard API key from the Twilio console. Signs the access token (HS256, one hour). |
+| `TWILIO_TWIML_APP_SID` | browser calls | The TwiML app whose Voice URL is the first route below |
+| `APP_URL` | both | The exact public origin. Status callbacks are attached with it, and the signature check hashes the full URL. |
+
+Routes:
+
+| Route | Set it where | What it does |
+|---|---|---|
+| `POST https://<app>/api/webhooks/twilio/voice` | TwiML app, Voice request URL | Checks the Twilio signature, confirms the dialed number is on a contact in the caller's workspace and that the contact is not marked do not contact, logs the call, and returns the `<Dial>` TwiML. A refused call gets a `<Say>` with the reason. |
+| `POST https://<app>/api/webhooks/twilio/voice-status` | Attached to each bridge call automatically when `APP_URL` is set. For browser calls, set it as the TwiML app status callback URL. | Checks the signature and updates the call's status, length, and recording URL. Answers `204` with the header `x-matched: true` or `false`. |
+| `GET https://<app>/api/voice/token` | Called by the app, not by Twilio | Signed in users whose role can send messages get `{ token, expiresAt, identity }`. Answers `501` with a plain message when the provider cannot issue a token. |
+
+Bridge calls need the team member's own phone number on their profile (`profiles.phone`). Without it the Call button explains what is missing and no call is placed.
+
+Rules enforced before any call: the contact must not be marked do not contact, and must have a phone number that normalizes to E.164. An SMS opt out does not block a voice call.
+
+What the mock does: `startCall` rings nothing, returns a fake id (`mock-call-...`) and the status `completed`, so the call log, outcomes, and the Activity tab can be exercised. The button message and the timeline entry both say that no phone rang. `accessToken` returns null, so the token route answers `501`. The voice route returns a `<Say>` that calling is not connected. The status route accepts JSON or a form post with `id` (the provider call id), `status` (`queued`, `ringing`, `in_progress`, `completed`, `busy`, `no_answer`, `failed`, `canceled`), and optional `duration` and `recordingUrl`. In production the mock routes follow the same `MOCK_WEBHOOK_SECRET` rule as the SMS routes.
+
+Not done yet: the browser softphone, inbound calls, call recording and its consent notice, and the lead leg result of a bridge call (the status callback reports the team member's leg; the `<Dial>` needs an action URL to report whether the seller answered).
+
 ## Email: Resend
 
 Interface `EmailProvider`. Posts to `https://api.resend.com/emails`. `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` (a verified domain sender). Delivery events arrive at `/api/webhooks/resend`; set `RESEND_WEBHOOK_SECRET` from the dashboard so the Svix signature verifies.
