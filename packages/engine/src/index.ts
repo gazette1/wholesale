@@ -17,3 +17,4 @@ export * from "./glossary";
 export * from "./schemas";
 export * from "./validate";
 export * from "./runDeal";
+export * from "./buyerMatch";

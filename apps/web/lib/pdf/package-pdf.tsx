@@ -9,7 +9,7 @@ export type PackageData = {
   notes: string | null;
   outputs: DealOutputs;
   inputs: { arv: number; purchasePrice: number; repairCosts: number; assignmentFee: number; investorBuyPrice: number; holdMonths: number };
-  report: { avm?: number; owner?: string; yearsOwned?: number; taxAmount?: number; assessed?: number; flags: string[]; lastSale?: { date?: string; price?: number } } | null;
+  report: { avm?: number; owner?: string; yearsOwned?: number; taxAmount?: number; assessed?: number; flags: string[]; rentEstimate?: number | null; lastSale?: { date?: string; price?: number } } | null;
   comps: { address: string; soldPrice: number | null; soldAt: string | null; sqft: number | null; distanceMi: number | null }[];
   sections: { financials: boolean; comps: boolean; report: boolean; rehab: boolean; notes: boolean };
   generatedAt: string;
@@ -93,7 +93,7 @@ export function PackageDocument({ data }: { data: PackageData }) {
                 <View style={s.row}><Text>Resale at ARV</Text><Text>{usd(data.inputs.arv)}</Text></View>
                 <View style={s.row}><Text>Projected end buyer profit</Text><Text style={{ fontFamily: "Helvetica-Bold" }}>{usd(data.inputs.arv - w.investorBuyPrice - a.repairCosts - a.financing.total - a.holding.total - a.buying.total - a.selling.total)}</Text></View>
                 <View style={s.row}><Text>Investor all in % of ARV</Text><Text>{pct(w.investorArvPct)}</Text></View>
-                <View style={s.row}><Text>Rent estimate (buy and hold)</Text><Text>{data.outputs.buyAndHold ? `${usd(data.outputs.buyAndHold.current.grossRents)} / mo` : "n/a"}</Text></View>
+                <View style={s.row}><Text>Rent estimate (buy and hold)</Text><Text>{data.outputs.buyAndHold ? `${usd(data.outputs.buyAndHold.current.grossRents)} / mo` : data.report?.rentEstimate ? `${usd(data.report.rentEstimate)} / mo` : "n/a"}</Text></View>
               </View>
             </View>
           </>

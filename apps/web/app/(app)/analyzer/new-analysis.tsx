@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ActionForm } from "@/components/ui/action-form";
 import { createAnalysisFromPicker } from "@/lib/actions/analyzer";
@@ -24,7 +24,7 @@ export function NewAnalysis({ leads }: { leads: PickerLead[] }) {
       <DialogTrigger asChild><Button type="button" variant="primary"><Plus className="h-4 w-4" />New analysis</Button></DialogTrigger>
       <DialogContent title="New analysis" description="Pick the lead to analyze. The analysis starts from the property report, the rehab checklist defaults, and the lead's asking price.">
         {leads.length === 0 ? (
-          <div className="space-y-3 text-[13px]"><p className="text-fg-2">There are no open leads yet. Add a lead first, then analyze it.</p><Link href="/leads/new"><Button type="button" variant="primary">New lead</Button></Link></div>
+          <div className="space-y-3 text-[13px]"><p className="text-fg-2">There are no open leads yet. Add a lead first, then analyze it.</p><LinkButton href="/leads/new" variant="primary">New lead</LinkButton></div>
         ) : (
           <ActionForm action={createAnalysisFromPicker} submitLabel="Create analysis" className="space-y-3">
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by address or city" aria-label="Search leads" autoFocus />

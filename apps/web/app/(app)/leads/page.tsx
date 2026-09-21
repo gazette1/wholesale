@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { listLeads, listStages, listProfiles, listSources, listTags, type LeadFilters } from "@/lib/data/leads";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, THead, TBody, TH, TD } from "@/components/ui/table";
 import { ClickableRow } from "./clickable-row";
@@ -34,13 +34,17 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const multiStageLabel = stageKeys.length > 1 ? stageKeys.map((k) => stages.find((s) => s.key === k)?.name ?? k).join(" + ") : null;
   return (
     <>
-      <PageHeader title="Leads" description={`${data.total} ${filters.status === "all" ? "" : filters.status} leads`} actions={<Link href="/leads/new"><Button variant="primary"><Plus className="h-4 w-4" />New lead</Button></Link>} />
+      <PageHeader title="Leads" description={`${data.total} ${filters.status === "all" ? "" : `${filters.status} `}${data.total === 1 ? "lead" : "leads"}${sp.issue ? `, flagged ${sp.issue.replace(/_/g, " ")}` : ""}`} actions={<LinkButton href="/leads/new" variant="primary"><Plus className="h-4 w-4" />New lead</LinkButton>} />
       <form method="get" className="flex flex-wrap items-end gap-2 mb-3">
-        <Input name="q" defaultValue={sp.q} placeholder="Search address, name, phone" className="w-60" />
+        {/* Filters that have no control of their own ride along, so Apply does not drop them. */}
+        {sp.sort ? <input type="hidden" name="sort" value={sp.sort} /> : null}
+        {sp.dir ? <input type="hidden" name="dir" value={sp.dir} /> : null}
+        {sp.issue ? <input type="hidden" name="issue" value={sp.issue} /> : null}
+        <Input name="q" defaultValue={sp.q} placeholder="Search address, name, phone" aria-label="Search leads" className="w-60" />
         <Select name="stage" defaultValue={sp.stage ?? ""} className="w-44"><option value="">All stages</option>{multiStageLabel ? <option value={sp.stage}>{multiStageLabel}</option> : null}{stages.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}</Select>
         <Select name="assigned" defaultValue={sp.assigned ?? ""} className="w-40"><option value="">Anyone</option><option value="unassigned">Unassigned</option>{team.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}</Select>
         <Select name="source" defaultValue={sp.source ?? ""} className="w-40"><option value="">Any source</option>{sources.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</Select>
-        <Select name="due" defaultValue={sp.due ?? ""} className="w-36"><option value="">Any follow up</option><option value="overdue">Overdue</option><option value="today">Due today</option><option value="week">This week</option></Select>
+        <Select name="due" defaultValue={sp.due ?? ""} className="w-36"><option value="">Any follow up</option><option value="now">Due today or overdue</option><option value="overdue">Overdue</option><option value="today">Due today</option><option value="week">Next 7 days</option></Select>
         <Select name="untouched" defaultValue={sp.untouched ?? ""} className="w-36"><option value="">Any attempts</option><option value="1">Untouched</option></Select>
         <Select name="created" defaultValue={sp.created ?? ""} className="w-36"><option value="">Created any time</option><option value="today">Created today</option><option value="week">New this week</option><option value="month">Last 30 days</option></Select>
         <Select name="offer" defaultValue={sp.offer ?? ""} className="w-36"><option value="">Any offer state</option><option value="sent">Offer out</option></Select>
@@ -51,16 +55,16 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       </form>
       <div className="flex flex-wrap gap-1.5 mb-3 text-xs">
         <span className="text-fg-3 mr-1">Saved views:</span>
-        {[{ label: "Call now", q: { due: "overdue", status: "open" } }, { label: "Untouched", q: { untouched: "1", status: "open" } }, { label: "Offers out", q: { stage: "offer_sent", status: "open" } }, { label: "Messy deals", q: { issue: "dirty_title", status: "open" } }, { label: "Mine", q: { assigned: session.profileId, status: "open" } }].map((v) => (
-          <Link key={v.label} href={link({ q: undefined, stage: undefined, assigned: undefined, due: undefined, issue: undefined, untouched: undefined, created: undefined, offer: undefined, page: undefined, ...v.q })} className="rounded-full border border-border bg-surface px-2.5 py-1 hover:bg-surface-2">{v.label}</Link>
+        {[{ label: "Call now", q: { due: "now", status: "open" } }, { label: "Untouched", q: { untouched: "1", status: "open" } }, { label: "Offers out", q: { stage: "offer_sent", status: "open" } }, { label: "Messy deals", q: { issue: "dirty_title", status: "open" } }, { label: "Mine", q: { assigned: session.profileId, status: "open" } }].map((v) => (
+          <Link key={v.label} href={`/leads?${new URLSearchParams(Object.entries(v.q).filter((e): e is [string, string] => typeof e[1] === "string")).toString()}`} className="rounded-full border border-border bg-surface px-2.5 py-1 hover:bg-surface-2">{v.label}</Link>
         ))}
       </div>
-      {data.rows.length === 0 ? <EmptyState title="No leads match" description="Try a different filter or add a lead." action={<Link href="/leads/new"><Button variant="primary">New lead</Button></Link>} /> : (
+      {data.rows.length === 0 ? <EmptyState title="No leads match" description={Number(sp.page ?? 1) > 1 ? "This page is past the end of the list. Go back to the first page." : "Try a different filter or add a lead."} action={<LinkButton href="/leads/new" variant="primary">New lead</LinkButton>} /> : (
         <div className="rounded-lg border border-border bg-surface overflow-hidden">
           <Table>
             <THead><tr>{COLUMNS.map((c) => (
               <TH key={c.key} right={c.right}>
-                {c.sort ? <Link href={link({ sort: c.sort, dir: sp.sort === c.sort && sp.dir !== "desc" ? "desc" : "asc" })} className={cn("inline-flex items-center gap-1 hover:text-fg", sp.sort === c.sort && "text-fg")}>{c.label}<ArrowUpDown className="h-3 w-3" /></Link> : c.label}
+                {c.sort ? <Link href={link({ sort: c.sort, dir: sp.sort === c.sort && sp.dir !== "desc" ? "desc" : "asc", page: undefined })} className={cn("inline-flex items-center gap-1 hover:text-fg", sp.sort === c.sort && "text-fg")}>{c.label}<ArrowUpDown className="h-3 w-3" /></Link> : c.label}
               </TH>
             ))}</tr></THead>
             <TBody>

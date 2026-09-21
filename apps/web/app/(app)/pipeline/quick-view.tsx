@@ -96,6 +96,7 @@ function DrawerBody({ lead, stages, canMove, canAnalyze, onStageChange, onLeadPa
 
   return (
     <DrawerContent
+      returnFocusTo={`[data-lead-card="${lead.id}"]`}
       title={lead.address}
       description={data ? `${data.city}, ${data.state} ${data.postalCode}` : lead.city}
       headerExtra={
@@ -111,7 +112,6 @@ function DrawerBody({ lead, stages, canMove, canAnalyze, onStageChange, onLeadPa
         <section aria-label="Quick actions" className="flex flex-wrap gap-2">
           <Link href={`/leads/${leadId}`} className={buttonVariants({ variant: "primary", size: "sm" })}><ExternalLink className="h-3.5 w-3.5" />Open lead</Link>
           {analysisId ? <Link href={`/analyzer/${analysisId}`} className={linkButton}><Calculator className="h-3.5 w-3.5" />Open analyzer</Link> : null}
-          {!analysisId && data && canAnalyze ? <CreateAnalysisForm propertyId={data.propertyId} leadId={leadId} size="sm" variant="outline" /> : null}
           <Link href={`/properties/${lead.propertyId}/report`} className={linkButton}><FileText className="h-3.5 w-3.5" />Property report</Link>
           <Link href={`/leads/${leadId}?tab=messages`} className={linkButton}><MessageSquare className="h-3.5 w-3.5" />Messages</Link>
         </section>
@@ -177,7 +177,7 @@ function DrawerBody({ lead, stages, canMove, canAnalyze, onStageChange, onLeadPa
               <Stat label="Source" value={data.source ?? "Unknown"} />
               <Stat label="Assigned to" value={data.assignedName ?? "Unassigned"} />
               <Stat label="Urgency" value={<span className="capitalize">{data.urgency}</span>} />
-              <Stat label="Messy score" value={data.messyScore} tone={data.messyScore > 0 ? "warn" : undefined} hint={data.issues.length ? data.issues.map((k) => k.replace(/_/g, " ")).join(", ") : undefined} />
+              <Stat label="Messy score" value={data.messyScore} tone={data.messyScore > 0 ? "warn" : undefined} />
               {data.issues.length ? <p className="text-xs text-fg-3 mt-1.5">Flagged: {data.issues.map((k) => k.replace(/_/g, " ")).join(", ")}</p> : null}
               {data.tags.length ? <div className="flex flex-wrap gap-1.5 mt-2">{data.tags.map((t) => <Badge key={`${t.kind}:${t.name}`} tone={t.kind === "issue" ? "warn" : "brand"}>{t.name}</Badge>)}</div> : null}
             </Section>

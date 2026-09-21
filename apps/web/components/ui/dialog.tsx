@@ -29,12 +29,12 @@ export function DialogContent({ className, children, title, description, wide }:
 const DRAWER_CSS = "@keyframes drawer-in{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}.drawer-in{animation:drawer-in 160ms ease-out}@media (prefers-reduced-motion:reduce){.drawer-in{animation:none}}";
 
 /** Right side panel. Full height, about 440px wide, full width on phones. Same Radix dialog underneath, so focus trap and Escape work. */
-export function DrawerContent({ className, children, title, description, headerExtra, footer }: { className?: string; children: React.ReactNode; title: string; description?: string; headerExtra?: React.ReactNode; footer?: React.ReactNode }) {
+export function DrawerContent({ className, children, title, description, headerExtra, footer, returnFocusTo }: { className?: string; children: React.ReactNode; title: string; description?: string; headerExtra?: React.ReactNode; footer?: React.ReactNode; /** CSS selector of the element that should get focus back when the drawer closes. */ returnFocusTo?: string }) {
   return (
     <DialogPrimitive.Portal>
       <style>{DRAWER_CSS}</style>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[1px]" />
-      <DialogPrimitive.Content className={cn("drawer-in fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-border bg-surface shadow-[var(--shadow-pop)] focus:outline-none sm:w-[440px] sm:max-w-[92vw]", className)}>
+      <DialogPrimitive.Content onCloseAutoFocus={(e) => { if (!returnFocusTo) return; const el = document.querySelector<HTMLElement>(returnFocusTo); if (el) { e.preventDefault(); el.focus(); } }} className={cn("drawer-in fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-border bg-surface shadow-[var(--shadow-pop)] focus:outline-none sm:w-[440px] sm:max-w-[92vw]", className)}>
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border shrink-0">
           <div className="min-w-0">
             <DialogPrimitive.Title className="text-sm font-semibold leading-5 break-words">{title}</DialogPrimitive.Title>

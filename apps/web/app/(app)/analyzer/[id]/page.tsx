@@ -4,12 +4,13 @@ import { requireSession, can } from "@/lib/auth";
 import { getAnalysis } from "@/lib/data/analyses";
 import { PageHeader } from "@/components/ui/misc";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { cloneAnalysis, deleteAnalysis, setAnalysisStatus, setAnalysisLibraryState } from "@/lib/actions/analyzer";
 import { Alert } from "@/components/ui/misc";
 import { ActionButton } from "@/components/ui/action-form";
 import { Editor } from "./editor";
 import { money } from "@/lib/utils";
+import { SubmitOnce } from "@/components/ui/action-form";
 
 export const metadata = { title: "Analysis" };
 const TONE: Record<string, "neutral" | "info" | "good" | "bad"> = { draft: "neutral", reviewing: "info", approved_for_offer: "good", rejected: "bad" };
@@ -32,14 +33,14 @@ export default async function AnalysisPage({ params, searchParams }: { params: P
         description={`${property.city}, ${property.state} ${property.postalCode} · v${analysis.version} ${analysis.name} · engine ${analysis.engineVersion}`}
         actions={writable && !trashed ? (
           <>
-            {siblings.length > 1 ? <Link href={`/analyzer/${id}?tab=compare`}><Button variant="outline">Compare {siblings.length} versions</Button></Link> : null}
-            <form action={cloneAnalysis.bind(null, id)}><Button type="submit" variant="outline">Clone</Button></form>
+            {siblings.length > 1 ? <LinkButton href={`/analyzer/${id}?tab=compare`} variant="outline">Compare {siblings.length} versions</LinkButton> : null}
+            <form action={cloneAnalysis.bind(null, id)}><SubmitOnce variant="outline">Clone</SubmitOnce></form>
             {analysis.status === "draft" ? <ActionButton action={setAnalysisStatus.bind(null, id, "reviewing")} size="md">Send to review</ActionButton> : null}
             {analysis.status !== "approved_for_offer" ? <ActionButton action={setAnalysisStatus.bind(null, id, "approved_for_offer")} variant="primary" size="md">Approve for offer</ActionButton> : null}
             {analysis.status !== "rejected" ? <ActionButton action={setAnalysisStatus.bind(null, id, "rejected")} variant="ghost" size="md">Reject</ActionButton> : null}
             {locked ? <ActionButton action={setAnalysisStatus.bind(null, id, "draft")} variant="ghost" size="md">Reopen</ActionButton> : null}
-            <Link href={`/buyers/match/${id}`}><Button variant="outline">Match buyers</Button></Link>
-            <Link href={`/packages/new?analysis=${id}`}><Button variant="default">Deal package</Button></Link>
+            <LinkButton href={`/buyers/match/${id}`} variant="outline">Match buyers</LinkButton>
+            <LinkButton href={`/packages/new?analysis=${id}`} variant="default">Deal package</LinkButton>
           </>
         ) : undefined}
       />

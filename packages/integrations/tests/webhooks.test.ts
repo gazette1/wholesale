@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { parseCsv, parseCsvRecords, toCsv, recordsToCsv, guardFormulaCell, escapeCsvCell } from "../src/webhooks/csv";
 import { signPayload, verifySignature, safeEqual } from "../src/webhooks/signature";
 import { EVENTS, SUBSCRIBABLE_EVENTS, isWebhookEvent, checkWebhookUrl, isPrivateHost } from "../src/webhooks/events";
-import { parseLeadPayload, parseBuyerPayload, normalizeAddressKey, splitSingleLineAddress, canonicalKey } from "../src/webhooks/lead-payload";
+import { parseLeadPayload, parseBuyerPayload, normalizeAddressKey, splitSingleLineAddress, canonicalKey, splitStates, hasKnownCsvHeader, publicFieldName } from "../src/webhooks/lead-payload";
+import { phoneDigits, phoneMatchKey, phonesMatch, pickInboundContact } from "../src/webhooks/phone-match";
 
 const BOM = String.fromCharCode(0xfeff);
 
@@ -197,13 +198,44 @@ describe("lead payload", () => {
   it("reports missing and invalid fields", () => {
     const r = parseLeadPayload({ city: "Towson" });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("addressLine1 is required");
+    if (!r.ok) { expect(r.error).toContain("address is required"); expect(r.error).toContain("zip is required"); expect(r.error).not.toMatch(/addressLine1|postalCode/); }
     const e = parseLeadPayload({ address: "1 A St", city: "X", state: "MD", zip: "21201", email: "nope" });
     expect(e.ok).toBe(false);
     const n = parseLeadPayload({ address: "1 A St", city: "X", state: "MD", zip: "21201", beds: "three" });
     expect(n.ok).toBe(false);
     expect(parseLeadPayload("text").ok).toBe(false);
     expect(parseLeadPayload([1]).ok).toBe(false);
+  });
+
+  it("uses public field names and plain sentences in errors", () => {
+    const base = { address: "1 A St", city: "X", state: "MD", zip: "21201" };
+    const long = parseLeadPayload({ ...base, notes: "x".repeat(5001) });
+    expect(long.ok).toBe(false);
+    if (!long.ok) { expect(long.error).toBe("notes must be 5,000 characters or fewer"); expect(long.error).not.toMatch(/String must contain/); }
+    expect(parseLeadPayload({ ...base, notes: "x".repeat(5000) }).ok).toBe(true);
+    const negative = parseLeadPayload({ ...base, asking_price: -1 });
+    if (!negative.ok) expect(negative.error).toBe("askingPrice must be zero or more");
+    expect(negative.ok).toBe(false);
+    const state = parseLeadPayload({ ...base, state: "Atlantis" });
+    if (!state.ok) expect(state.error).toBe("state must be a two letter code");
+    expect(state.ok).toBe(false);
+    const zip = parseLeadPayload({ ...base, zip: "abc" });
+    if (!zip.ok) expect(zip.error).toBe("zip must be a 5 digit ZIP or ZIP+4");
+    const beds = parseLeadPayload({ ...base, beds: "three" });
+    if (!beds.ok) expect(beds.error).toBe("beds must be a number");
+    const year = parseLeadPayload({ ...base, year_built: 1200 });
+    if (!year.ok) expect(year.error).toBe("yearBuilt must be 1600 or more");
+    expect(publicFieldName("addressLine1")).toBe("address");
+    expect(publicFieldName("postalCode")).toBe("zip");
+    expect(publicFieldName("firstName")).toBe("firstName");
+  });
+
+  it("tells a CSV header row from some other file", () => {
+    expect(hasKnownCsvHeader(["Address", "City", "State", "Zip"])).toBe(true);
+    expect(hasKnownCsvHeader(["Company", "buyer_id"])).toBe(true);
+    expect(hasKnownCsvHeader(["\u0089PNG", "IHDR"])).toBe(false);
+    expect(hasKnownCsvHeader(["", " "])).toBe(false);
+    expect(hasKnownCsvHeader([])).toBe(false);
   });
 
   it("never carries a consent field", () => {
@@ -227,9 +259,68 @@ describe("buyer payload", () => {
     if (r.ok) expect(r.data).toMatchObject({ firstName: "Sam", lastName: "Carter", company: "Carter Homes LLC", email: "sam@example.com", states: ["MD", "VA", "PA"] });
   });
 
+  it("accepts states separated by commas, semicolons, pipes, or spaces", () => {
+    expect(splitStates("MD, PA")).toEqual(["MD", "PA"]);
+    expect(splitStates("MD PA")).toEqual(["MD", "PA"]);
+    expect(splitStates("md  pa va")).toEqual(["MD", "PA", "VA"]);
+    expect(splitStates("New York, north carolina | MD;PA")).toEqual(["NY", "NC", "MD", "PA"]);
+    expect(splitStates("MD, MD, md")).toEqual(["MD"]);
+    expect(splitStates("")).toEqual([]);
+    const exported = parseBuyerPayload({ first_name: "Sam", states: "MD, PA" });
+    expect(exported.ok && exported.data.states).toEqual(["MD", "PA"]);
+    const legacy = parseBuyerPayload({ first_name: "Sam", states: "MD PA" });
+    expect(legacy.ok && legacy.data.states).toEqual(["MD", "PA"]);
+    const bad = parseBuyerPayload({ first_name: "Sam", states: "Atlantis" });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toBe("states must be two letter codes");
+  });
+
   it("falls back to the company name and rejects an empty row", () => {
     const c = parseBuyerPayload({ company: "Harbor Capital" });
     expect(c.ok && c.data.firstName).toBe("Harbor Capital");
     expect(parseBuyerPayload({ phone: "410-555-0100" }).ok).toBe(false);
+  });
+});
+
+describe("inbound sender matching", () => {
+  it("reduces a number to digits and needs ten of them", () => {
+    expect(phoneDigits("+1 (410) 555-0100")).toBe("14105550100");
+    expect(phoneDigits("abc")).toBe("");
+    expect(phoneDigits(null)).toBe("");
+    expect(phoneMatchKey("+1 (410) 555-0100")).toBe("4105550100");
+    expect(phoneMatchKey("410-555-0100")).toBe("4105550100");
+    expect(phoneMatchKey("abc")).toBeNull();
+    expect(phoneMatchKey("")).toBeNull();
+    expect(phoneMatchKey("55501")).toBeNull();
+    expect(phoneMatchKey("555-0100")).toBeNull();
+    expect(phoneMatchKey("410555010")).toBeNull();
+  });
+
+  it("matches on the last ten digits exactly, never on a shorter suffix", () => {
+    expect(phonesMatch("(410) 555-0100", "+14105550100")).toBe(true);
+    expect(phonesMatch("+1 410 555 0100", "4105550100")).toBe(true);
+    expect(phonesMatch("410-555-0100", "abc")).toBe(false);
+    expect(phonesMatch("410-555-0100", "")).toBe(false);
+    expect(phonesMatch("410-555-0100", "0100")).toBe(false);
+    expect(phonesMatch("410-555-0100", "555-0100")).toBe(false);
+    expect(phonesMatch("555-0100", "555-0100")).toBe(false);
+    expect(phonesMatch("410-555-0100", "443-555-0100")).toBe(false);
+    expect(phonesMatch("", "")).toBe(false);
+  });
+
+  it("picks one contact when a number is shared", () => {
+    const a = { id: "a", orgId: "org-1", lastOutboundAt: "2026-01-01T00:00:00Z", createdAt: "2025-01-01T00:00:00Z" };
+    const b = { id: "b", orgId: "org-2", lastOutboundAt: "2026-02-01T00:00:00Z", createdAt: "2025-01-01T00:00:00Z" };
+    const c = { id: "c", orgId: "org-2", lastOutboundAt: null, createdAt: "2026-03-01T00:00:00Z" };
+    expect(pickInboundContact([])).toBeNull();
+    expect(pickInboundContact([a])).toBe(a);
+    // The org that owns the receiving number wins even when another org texted the sender more recently.
+    expect(pickInboundContact([a, b, c], ["org-1"])).toBe(a);
+    // Unknown receiving number: the contact that was sent a message most recently.
+    expect(pickInboundContact([a, b, c])).toBe(b);
+    expect(pickInboundContact([a, b, c], ["org-9"])).toBe(b);
+    // Inside the owning org the most recently contacted contact wins, then the newest.
+    expect(pickInboundContact([a, b, c], ["org-2"])).toBe(b);
+    expect(pickInboundContact([{ ...b, lastOutboundAt: null }, c], ["org-2"])).toBe(c);
   });
 });

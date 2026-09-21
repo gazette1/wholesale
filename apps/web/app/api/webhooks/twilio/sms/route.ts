@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { smsProvider } from "@dealcalc/integrations";
-import { handleInbound } from "@/lib/services/messaging";
+import { handleInbound, mockWebhookAllowed } from "@/lib/services/messaging";
 import { ensureDevDatabase } from "@dealcalc/db";
 import { emitEventForContact } from "@/lib/services/integrations";
 
@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
   const form = Object.fromEntries(new URLSearchParams(rawBody));
   const url = process.env.APP_URL ? `${process.env.APP_URL}${request.nextUrl.pathname}` : request.url;
   const provider = smsProvider();
+  if (provider.name === "mock" && !mockWebhookAllowed(request.headers)) return new NextResponse("Unauthorized", { status: 401 });
   const req = { url, method: "POST", headers: Object.fromEntries(request.headers), rawBody, form };
   if (!provider.verifyWebhook(req)) return new NextResponse("Invalid signature", { status: 403 });
   const inbound = provider.parseInbound(req);

@@ -1,10 +1,10 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { leads, properties, contacts, propertyContacts, pipelineStages, activities, tasks, leadTags, tags, offers, campaignEnrollments, campaigns, profiles, dealAnalyses } from "@dealcalc/db";
-import { judgmentProvider, assessDistress } from "@dealcalc/integrations";
+import { leads, properties, contacts, propertyContacts, pipelineStages, activities, tasks, leadTags, tags, offers, campaignEnrollments, campaigns, profiles, dealAnalyses, leadSources } from "@dealcalc/db";
+import { judgmentProvider, assessDistress, normalizePhone } from "@dealcalc/integrations";
 import { getDb } from "../db";
 import { requireSession, requireCan, can } from "../auth";
 import { audit } from "../audit";
@@ -12,6 +12,7 @@ import { sendToLead, ConsentError } from "../services/messaging";
 import { enrichProperty } from "../services/enrichment";
 import { emitEvent } from "../services/integrations";
 import { toNumber, toOptionalNumber } from "../utils";
+import { friendlyError, isUuid, moneyField, numberField, textField, MAX_MONEY } from "../safe";
 import { leadQuickView, type LeadQuickView } from "../data/leads";
 
 export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error: string };
@@ -34,14 +35,41 @@ function parseLocalDateTime(value: string, tzOffsetMinutes?: string | null): Dat
   return offset === null ? d : new Date(d.getTime() + offset * 60_000);
 }
 
+const LEAD_FIELD_LABELS: Record<string, string> = {
+  addressLine1: "street address", addressLine2: "unit", city: "city", state: "state", postalCode: "ZIP", propertyType: "property type", beds: "beds", baths: "baths", sqft: "square feet", yearBuilt: "year built",
+  firstName: "first name", lastName: "last name", phone: "phone", email: "email", askingPrice: "asking price", notes: "notes", sourceId: "source", assignedTo: "assigned to",
+};
+
+/** Suggestions only. Shown at 0.5 and up so the keyword mock (capped at 0.55) still surfaces something to review. */
+const SUGGEST_AT = 0.5;
+async function suggestIssuesFromText(orgId: string, leadId: string, text: string): Promise<void> {
+  if (text.length <= 20) return;
+  try {
+    const db = await getDb();
+    const assessment = await assessDistress(judgmentProvider(), text);
+    const strong = Object.entries(assessment.signals).filter(([, p]) => p >= SUGGEST_AT).map(([k, p]) => `${k.replace(/_/g, " ")} (${Math.round(p * 100)}%)`);
+    if (strong.length) await db.insert(activities).values({ orgId, leadId, actorId: null, type: "system", payload: { text: `Suggested deal issues from notes (${assessment.provider}, review before flagging): ${strong.join(", ")}`, suggestions: assessment.signals, motivationScore: assessment.motivationScore } });
+  } catch { /* judgment is optional */ }
+}
+
+/**
+ * The lead's next follow up is the earliest open task on it. Called after a task is added, completed, or reopened,
+ * so an overdue task is never hidden by a later one and the due lists match the task list.
+ */
+async function syncNextFollowUp(orgId: string, leadId: string): Promise<void> {
+  const db = await getDb();
+  const [next] = await db.select({ dueAt: tasks.dueAt }).from(tasks).where(and(eq(tasks.orgId, orgId), eq(tasks.leadId, leadId), isNull(tasks.doneAt))).orderBy(asc(tasks.dueAt)).limit(1);
+  await db.update(leads).set({ nextFollowUpAt: next?.dueAt ?? null }).where(and(eq(leads.id, leadId), eq(leads.orgId, orgId)));
+}
+
 const NewLeadSchema = z.object({
-  addressLine1: z.string().min(3), addressLine2: z.string().optional(), city: z.string().min(1), state: z.string().length(2), postalCode: z.string().min(5),
-  propertyType: z.string().optional(), beds: z.number().nullable(), baths: z.number().nullable(), sqft: z.number().nullable(), yearBuilt: z.number().nullable(),
+  addressLine1: z.string().min(3, "Enter the street address").max(200), addressLine2: z.string().max(60).optional(), city: z.string().min(1).max(80), state: z.string().regex(/^[A-Z]{2}$/, "State must be a two letter code such as MD"), postalCode: z.string().regex(/^\d{5}(-\d{4})?$/, "ZIP must be 5 digits"),
+  propertyType: z.string().max(60).optional(), beds: z.number().min(0).max(50).nullable(), baths: z.number().min(0).max(50).nullable(), sqft: z.number().int().min(0).max(1_000_000).nullable(), yearBuilt: z.number().int().min(1600).max(2100).nullable(),
   occupancy: z.enum(["owner", "tenant", "vacant", "unknown"]), condition: z.enum(["1", "2", "3", "4", "5", "unknown"]),
-  firstName: z.string().min(1), lastName: z.string().optional(), phone: z.string().optional(), email: z.string().email().optional().or(z.literal("")),
+  firstName: z.string().min(1, "Enter the contact first name").max(80), lastName: z.string().max(80).optional(), phone: z.string().max(40).optional(), email: z.string().email("Enter a valid email address").max(254).optional().or(z.literal("")),
   relationship: z.enum(["owner", "heir", "agent", "attorney", "tenant", "other"]), smsConsent: z.enum(["unknown", "opted_in", "opted_out"]),
-  sourceId: z.string().uuid().optional().or(z.literal("")), assignedTo: z.string().uuid().optional().or(z.literal("")), askingPrice: z.number().nullable(),
-  sellerUrgency: z.enum(["none", "low", "medium", "high", "immediate"]), notes: z.string().optional(), enrich: z.boolean(),
+  sourceId: z.string().uuid().optional().or(z.literal("")), assignedTo: z.string().uuid().optional().or(z.literal("")), askingPrice: z.number().min(0, "Asking price must be zero or more").max(MAX_MONEY).nullable(),
+  sellerUrgency: z.enum(["none", "low", "medium", "high", "immediate"]), notes: z.string().max(8000).optional(), enrich: z.boolean(),
 });
 
 export async function createLead(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
@@ -57,9 +85,17 @@ export async function createLead(_prev: ActionResult | null, form: FormData): Pr
       sourceId: form.get("sourceId") ?? "", assignedTo: form.get("assignedTo") ?? "", askingPrice: toOptionalNumber(form.get("askingPrice")),
       sellerUrgency: form.get("sellerUrgency") ?? "none", notes: form.get("notes") || undefined, enrich: form.get("enrich") === "on",
     });
-    if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") };
+    if (!parsed.success) return { ok: false, error: Array.from(new Set(parsed.error.issues.map((i) => (/^(String|Number|Expected|Invalid|Required)/.test(i.message) ? `Check the ${LEAD_FIELD_LABELS[String(i.path[0])] ?? String(i.path[0])} field.` : i.message)))).join(" ") };
     const d = parsed.data;
+    // Store phones in one format so the Call link, texting, and inbound matching all agree.
+    let phone: string | null = null;
+    if (d.phone && d.phone.trim()) {
+      phone = normalizePhone(d.phone.trim());
+      if (!phone) return { ok: false, error: "Enter a 10 digit US phone number, or leave the phone blank." };
+    }
     const db = await getDb();
+    if (d.sourceId && !(await db.query.leadSources.findFirst({ where: and(eq(leadSources.id, d.sourceId), eq(leadSources.orgId, session.orgId)) }))) return { ok: false, error: "That lead source was not found." };
+    if (d.assignedTo && !(await db.query.profiles.findFirst({ where: and(eq(profiles.id, d.assignedTo), eq(profiles.orgId, session.orgId), eq(profiles.active, true)) }))) return { ok: false, error: "That team member was not found." };
     const stage = await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.orgId, session.orgId), eq(pipelineStages.key, "new_lead")) })
       ?? (await db.select().from(pipelineStages).where(eq(pipelineStages.orgId, session.orgId)).orderBy(pipelineStages.position).limit(1))[0];
     if (!stage) return { ok: false, error: "No pipeline stages configured. Add stages under Settings." };
@@ -71,7 +107,7 @@ export async function createLead(_prev: ActionResult | null, form: FormData): Pr
     }).returning();
     const [contact] = await db.insert(contacts).values({
       orgId: session.orgId, firstName: d.firstName, lastName: d.lastName ?? null, relationship: d.relationship, smsConsent: d.smsConsent, smsConsentAt: d.smsConsent === "unknown" ? null : new Date(),
-      phones: d.phone ? [{ number: d.phone, type: "mobile", isPrimary: true }] : [], emails: d.email ? [{ address: d.email, isPrimary: true }] : [],
+      phones: phone ? [{ number: phone, type: "mobile", isPrimary: true }] : [], emails: d.email ? [{ address: d.email.toLowerCase(), isPrimary: true }] : [],
     }).returning();
     await db.insert(propertyContacts).values({ orgId: session.orgId, propertyId: property!.id, contactId: contact!.id, role: d.relationship, isPrimary: true });
     const [lead] = await db.insert(leads).values({
@@ -79,7 +115,7 @@ export async function createLead(_prev: ActionResult | null, form: FormData): Pr
       askingPrice: d.askingPrice != null ? String(d.askingPrice) : null, sellerUrgency: d.sellerUrgency, nextFollowUpAt: new Date(),
     }).returning();
     await db.insert(activities).values({ orgId: session.orgId, leadId: lead!.id, actorId: session.profileId, type: "system", payload: { text: "Lead created" } });
-    if (d.notes) await db.insert(activities).values({ orgId: session.orgId, leadId: lead!.id, actorId: session.profileId, type: "note", payload: { text: d.notes } });
+    if (d.notes) { await db.insert(activities).values({ orgId: session.orgId, leadId: lead!.id, actorId: session.profileId, type: "note", payload: { text: d.notes } }); await suggestIssuesFromText(session.orgId, lead!.id, d.notes); }
     await db.insert(tasks).values({ orgId: session.orgId, leadId: lead!.id, assignedTo: d.assignedTo || session.profileId, title: "First call", kind: "call", dueAt: new Date() });
     await audit(session, { entityType: "lead", entityId: lead!.id, action: "create", after: { propertyId: property!.id, contactId: contact!.id } });
     await emitEvent(session.orgId, "lead.created", { leadId: lead!.id, propertyId: property!.id, via: "app", externalId: null, address: { line1: d.addressLine1, line2: d.addressLine2 ?? null, city: d.city, state: d.state, postalCode: d.postalCode }, contact: { id: contact!.id, firstName: d.firstName, lastName: d.lastName ?? null, phone: d.phone ?? null, email: d.email || null }, askingPrice: d.askingPrice, urgency: d.sellerUrgency, source: null, sourceId: d.sourceId || null, stage: { key: stage.key, name: stage.name } });
@@ -89,7 +125,7 @@ export async function createLead(_prev: ActionResult | null, form: FormData): Pr
     revalidatePath("/leads"); revalidatePath("/pipeline"); revalidatePath("/dashboard");
     return { ok: true, id: lead!.id };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not create the lead." };
+    return { ok: false, error: friendlyError(err, "Could not create the lead.") };
   }
 }
 
@@ -113,7 +149,7 @@ export async function moveLeadStage(leadId: string, stageId: string): Promise<Ac
     revalidatePath("/pipeline"); revalidatePath("/leads"); revalidatePath(`/leads/${leadId}`); revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not move the lead." };
+    return { ok: false, error: friendlyError(err, "Could not move the lead.") };
   }
 }
 
@@ -125,29 +161,53 @@ export async function updateLeadFields(leadId: string, form: FormData): Promise<
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
     if (!lead) return { ok: false, error: "Lead not found." };
     const patch: Partial<typeof leads.$inferInsert> = {};
-    if (form.has("assignedTo")) patch.assignedTo = String(form.get("assignedTo")) || null;
-    if (form.has("nextFollowUpAt")) { const v = String(form.get("nextFollowUpAt")); patch.nextFollowUpAt = v ? new Date(v) : null; }
-    if (form.has("sellerUrgency")) patch.sellerUrgency = String(form.get("sellerUrgency")) as any;
-    if (form.has("motivationScore")) patch.motivationScore = toOptionalNumber(form.get("motivationScore"));
-    if (form.has("askingPrice")) { const v = toOptionalNumber(form.get("askingPrice")); patch.askingPrice = v != null ? String(v) : null; }
-    if (form.has("sourceId")) patch.sourceId = String(form.get("sourceId")) || null;
-    if (form.has("lostReason")) patch.lostReason = String(form.get("lostReason")) || null;
+    if (form.has("assignedTo")) {
+      const v = String(form.get("assignedTo"));
+      if (v && !(isUuid(v) && (await db.query.profiles.findFirst({ where: and(eq(profiles.id, v), eq(profiles.orgId, session.orgId), eq(profiles.active, true)) })))) return { ok: false, error: "That team member was not found." };
+      patch.assignedTo = v || null;
+    }
+    if (form.has("nextFollowUpAt")) {
+      const v = String(form.get("nextFollowUpAt"));
+      const parsedDate = v ? parseLocalDateTime(v, form.get("tzOffset") as string | null) : null;
+      if (v && !parsedDate) return { ok: false, error: "That follow up date could not be read." };
+      patch.nextFollowUpAt = parsedDate;
+    }
+    if (form.has("sellerUrgency")) {
+      const v = String(form.get("sellerUrgency"));
+      if (!["none", "low", "medium", "high", "immediate"].includes(v)) return { ok: false, error: "Pick a seller urgency from the list." };
+      patch.sellerUrgency = v as "none";
+    }
+    if (form.has("motivationScore")) { const m = numberField(form.get("motivationScore"), "Motivation score", 0, 10, { integer: true }); if (!m.ok) return m; patch.motivationScore = m.value; }
+    if (form.has("askingPrice")) { const a = moneyField(form.get("askingPrice"), "Asking price"); if (!a.ok) return a; patch.askingPrice = a.value != null ? String(a.value) : null; }
+    if (form.has("sourceId")) {
+      const v = String(form.get("sourceId"));
+      if (v && !(isUuid(v) && (await db.query.leadSources.findFirst({ where: and(eq(leadSources.id, v), eq(leadSources.orgId, session.orgId)) })))) return { ok: false, error: "That lead source was not found." };
+      patch.sourceId = v || null;
+    }
+    if (form.has("lostReason")) {
+      patch.lostReason = textField(form.get("lostReason"), 500);
+      // In the Dead / Nurture stage, a stated reason means lost; no reason means still being nurtured.
+      const stage = await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.id, lead.stageId), eq(pipelineStages.orgId, session.orgId)) });
+      if (stage?.key === "dead_nurture") patch.status = patch.lostReason ? "lost" : "nurture";
+    }
     if (form.has("dealIssues")) {
       const issues: Record<string, { flagged: boolean; note?: string }> = {};
       for (const key of String(form.get("issueKeys") ?? "").split(",").filter(Boolean)) {
         const flagged = form.get(`issue_${key}`) === "on";
-        const note = String(form.get(`issue_note_${key}`) ?? "").trim();
+        const note = String(form.get(`issue_note_${key}`) ?? "").trim().slice(0, 1000);
         if (flagged || note) issues[key] = { flagged, note: note || undefined };
       }
       const messyScore = Object.values(issues).filter((i) => i.flagged).length;
       patch.dealIssues = { ...issues, messyScore } as any;
     }
-    await db.update(leads).set(patch).where(eq(leads.id, leadId));
+    if (Object.keys(patch).length === 0) return { ok: true, message: "Nothing to save" };
+    await db.update(leads).set(patch).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
     await audit(session, { entityType: "lead", entityId: leadId, action: "update", before: pick(lead, Object.keys(patch)), after: patch });
-    revalidatePath(`/leads/${leadId}`); revalidatePath("/leads"); revalidatePath("/pipeline");
+    void emitEvent(session.orgId, "lead.updated", { leadId, propertyId: lead.propertyId, changed: Object.keys(patch) });
+    revalidatePath(`/leads/${leadId}`); revalidatePath("/leads"); revalidatePath("/pipeline"); revalidatePath("/dashboard");
     return { ok: true, message: "Saved" };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not save." };
+    return { ok: false, error: friendlyError(err, "Could not save the lead.") };
   }
 }
 
@@ -162,28 +222,22 @@ export async function addActivity(leadId: string, form: FormData): Promise<Actio
     const db = await getDb();
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
     if (!lead) return { ok: false, error: "Lead not found." };
-    const type = String(form.get("type") ?? "note") as "note" | "call";
-    const text = String(form.get("text") ?? "").trim();
-    const outcome = String(form.get("outcome") ?? "");
+    const type = String(form.get("type") ?? "note") === "call" ? "call" : "note";
+    const text = String(form.get("text") ?? "").trim().slice(0, 20000);
+    const outcome = String(form.get("outcome") ?? "").slice(0, 60);
     if (!text && type === "note") return { ok: false, error: "Write a note first." };
     await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: session.profileId, type, payload: { text, outcome } });
     if (type === "call") {
       await db.update(leads).set({ lastContactAt: new Date(), contactAttempts: sql`${leads.contactAttempts} + 1`, firstResponseMinutes: outcome === "spoke" && lead.firstResponseMinutes == null ? Math.max(1, Math.round((Date.now() - new Date(lead.createdAt).getTime()) / 60_000)) : lead.firstResponseMinutes }).where(eq(leads.id, leadId));
     }
     // Suggest deal issues from the note through the judgment provider; only stored as suggestions.
-    if (text.length > 20) {
-      try {
-        const assessment = await assessDistress(judgmentProvider(), text);
-        const strong = Object.entries(assessment.signals).filter(([, p]) => p >= 0.6).map(([k]) => k);
-        if (strong.length) await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: null, type: "system", payload: { text: `Suggested deal issues from notes (${assessment.provider}): ${strong.join(", ")}`, suggestions: assessment.signals, motivationScore: assessment.motivationScore } });
-      } catch { /* judgment is optional */ }
-    }
+    await suggestIssuesFromText(session.orgId, leadId, text);
     const next = parseLocalDateTime(String(form.get("nextFollowUpAt") ?? ""), form.get("tzOffset") as string | null);
     if (next) await db.update(leads).set({ nextFollowUpAt: next }).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
     revalidatePath(`/leads/${leadId}`); revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not log that." };
+    return { ok: false, error: friendlyError(err, "Could not log that.") };
   }
 }
 
@@ -209,21 +263,25 @@ export async function addTask(leadId: string | null, form: FormData): Promise<Ac
     const kind = (["call", "text", "email", "visit", "other"].includes(kindRaw) ? kindRaw : "other") as "call";
     const dueAt = parseLocalDateTime(String(form.get("dueAt") ?? ""), form.get("tzOffset") as string | null) ?? new Date();
     await db.insert(tasks).values({ orgId: session.orgId, leadId, assignedTo, title: title.slice(0, 200), kind, dueAt });
-    if (leadId) await db.update(leads).set({ nextFollowUpAt: dueAt }).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
+    if (leadId) await syncNextFollowUp(session.orgId, leadId);
     revalidatePath(leadId ? `/leads/${leadId}` : "/tasks"); revalidatePath("/tasks"); revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not add the task." };
+    return { ok: false, error: friendlyError(err, "Could not add the task.") };
   }
 }
 
 export async function completeTask(taskId: string, done: boolean): Promise<ActionResult> {
   const session = await requireSession();
+  if (!isUuid(taskId)) return { ok: false, error: "Task not found." };
   if (session.role === "viewer") return { ok: false, error: "Your role (viewer) is read only." };
   const db = await getDb();
   const task = await db.query.tasks.findFirst({ where: and(eq(tasks.id, taskId), eq(tasks.orgId, session.orgId)) });
   if (!task) return { ok: false, error: "Task not found." };
+  // A second click on a task that is already in the requested state changes nothing and logs nothing.
+  if (Boolean(task.doneAt) === done) return { ok: true };
   await db.update(tasks).set({ doneAt: done ? new Date() : null }).where(and(eq(tasks.id, taskId), eq(tasks.orgId, session.orgId)));
+  if (task.leadId) await syncNextFollowUp(session.orgId, task.leadId);
   if (done && task.leadId) await db.insert(activities).values({ orgId: session.orgId, leadId: task.leadId, actorId: session.profileId, type: "task", payload: { text: `Completed: ${task.title}` } });
   revalidatePath("/tasks"); revalidatePath("/dashboard"); if (task.leadId) revalidatePath(`/leads/${task.leadId}`);
   return { ok: true };
@@ -263,16 +321,21 @@ export async function sendMessage(leadId: string, form: FormData): Promise<Actio
   const session = await requireSession();
   try {
     requireCan(session, "message:send");
-    const channel = String(form.get("channel") ?? "sms") as "sms" | "email";
+    if (!isUuid(leadId)) return { ok: false, error: "Lead not found." };
+    const channel = String(form.get("channel") ?? "sms") === "email" ? "email" : "sms";
     const body = String(form.get("body") ?? "").trim();
     if (!body) return { ok: false, error: "Message is empty." };
+    if (body.length > (channel === "sms" ? 1600 : 20000)) return { ok: false, error: channel === "sms" ? "Texts are limited to 1,600 characters." : "That email is too long." };
     const contactId = String(form.get("contactId") ?? "");
-    await sendToLead({ orgId: session.orgId, senderProfileId: session.profileId, senderName: session.fullName.split(" ")[0] ?? session.fullName, leadId, contactId, channel, body, subject: String(form.get("subject") ?? "") || undefined, templateId: String(form.get("templateId") ?? "") || null, appUrl: process.env.APP_URL });
+    // A disabled option posts nothing, which is what happens when the only contact opted out.
+    if (!isUuid(contactId)) return { ok: false, error: channel === "sms" ? "No contact on this lead can receive texts. They opted out, are marked do not contact, or have no phone number." : "No contact on this lead has an email address that can be used." };
+    const templateRaw = String(form.get("templateId") ?? "");
+    await sendToLead({ orgId: session.orgId, senderProfileId: session.profileId, senderName: session.fullName.split(" ")[0] ?? session.fullName, leadId, contactId, channel, body, subject: String(form.get("subject") ?? "") || undefined, templateId: isUuid(templateRaw) ? templateRaw : null, appUrl: process.env.APP_URL });
     revalidatePath(`/leads/${leadId}`); revalidatePath("/dashboard");
     return { ok: true, message: "Sent" };
   } catch (err) {
     if (err instanceof ConsentError) return { ok: false, error: err.message };
-    return { ok: false, error: err instanceof Error ? err.message : "Could not send." };
+    return { ok: false, error: friendlyError(err, "Could not send the message.") };
   }
 }
 
@@ -322,7 +385,7 @@ export async function createOffer(leadId: string, form: FormData): Promise<Actio
   }
 }
 
-export async function updateOfferStatus(offerId: string, leadId: string, status: "accepted" | "rejected" | "countered" | "expired", counterAmount?: number): Promise<ActionResult> {
+export async function updateOfferStatus(offerId: string, leadId: string, status: "sent" | "accepted" | "rejected" | "countered" | "expired", counterAmount?: number): Promise<ActionResult> {
   const session = await requireSession();
   if (!can(session, "lead:write")) return { ok: false, error: `Your role (${session.role}) cannot change offers.` };
   const db = await getDb();
@@ -330,8 +393,10 @@ export async function updateOfferStatus(offerId: string, leadId: string, status:
   if (!offer) return { ok: false, error: "Offer not found." };
   // The lead comes from the offer row, never from the caller.
   leadId = offer.leadId;
-  if (counterAmount != null && !(Number.isFinite(counterAmount) && counterAmount > 0)) return { ok: false, error: "Counter amount must be positive." };
-  await db.update(offers).set({ status, counterAmount: counterAmount != null ? String(counterAmount) : offer.counterAmount }).where(and(eq(offers.id, offerId), eq(offers.orgId, session.orgId)));
+  if (!["sent", "accepted", "rejected", "countered", "expired"].includes(status)) return { ok: false, error: "Unknown offer status." };
+  if (counterAmount != null && !(Number.isFinite(counterAmount) && counterAmount > 0 && counterAmount <= MAX_MONEY)) return { ok: false, error: "Counter amount must be a positive dollar amount." };
+  if (status === "countered" && counterAmount == null && offer.counterAmount == null) return { ok: false, error: "Enter the amount the seller countered with." };
+  await db.update(offers).set({ status, sentAt: status === "sent" ? offer.sentAt ?? new Date() : offer.sentAt, counterAmount: counterAmount != null ? String(counterAmount) : offer.counterAmount }).where(and(eq(offers.id, offerId), eq(offers.orgId, session.orgId)));
   await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: session.profileId, type: "offer", payload: { offerId, status, counterAmount } });
   await audit(session, { entityType: "offer", entityId: offerId, action: "status", before: { status: offer.status }, after: { status, counterAmount } });
   await emitEvent(session.orgId, "offer.status_changed", { offerId, leadId, amount: Number(offer.amount), from: offer.status, to: status, counterAmount: counterAmount ?? null });
@@ -358,25 +423,73 @@ export async function runEnrichment(propertyId: string, leadId?: string): Promis
 
 export async function enrollInCampaign(leadId: string, campaignId: string): Promise<ActionResult> {
   const session = await requireSession();
-  requireCan(session, "campaign:write");
-  const db = await getDb();
-  const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
-  const campaign = await db.query.campaigns.findFirst({ where: and(eq(campaigns.id, campaignId), eq(campaigns.orgId, session.orgId)) });
-  if (!lead?.primaryContactId || !campaign) return { ok: false, error: "Lead needs a primary contact and the campaign must exist." };
-  await db.insert(campaignEnrollments).values({ orgId: session.orgId, campaignId, leadId, contactId: lead.primaryContactId, currentStep: 0, nextSendAt: new Date(), status: "active" });
-  revalidatePath(`/leads/${leadId}`); revalidatePath(`/campaigns/${campaignId}`);
-  return { ok: true, message: `Enrolled in ${campaign.name}` };
+  try {
+    requireCan(session, "campaign:write");
+    if (!isUuid(leadId) || !isUuid(campaignId)) return { ok: false, error: "Lead or campaign not found." };
+    const db = await getDb();
+    const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
+    const campaign = await db.query.campaigns.findFirst({ where: and(eq(campaigns.id, campaignId), eq(campaigns.orgId, session.orgId)) });
+    if (!lead?.primaryContactId || !campaign) return { ok: false, error: "Lead needs a primary contact and the campaign must exist." };
+    const contact = await db.query.contacts.findFirst({ where: and(eq(contacts.id, lead.primaryContactId), eq(contacts.orgId, session.orgId)) });
+    if (!contact) return { ok: false, error: "The primary contact was not found." };
+    // Consent is checked here as well as at send time, so an opted out contact never sits in a sequence as active.
+    if (contact.doNotContact) return { ok: false, error: "This contact is marked do not contact and cannot be enrolled." };
+    if (campaign.channel === "sms" && contact.smsConsent === "opted_out") return { ok: false, error: "This contact opted out of SMS and cannot be enrolled in a text campaign." };
+    if (campaign.channel === "sms" && contact.phones.length === 0) return { ok: false, error: "This contact has no phone number." };
+    if (campaign.channel === "email" && contact.emails.length === 0) return { ok: false, error: "This contact has no email address." };
+    const existing = await db.query.campaignEnrollments.findFirst({ where: and(eq(campaignEnrollments.campaignId, campaignId), eq(campaignEnrollments.leadId, leadId), eq(campaignEnrollments.orgId, session.orgId), eq(campaignEnrollments.status, "active")) });
+    if (existing) return { ok: false, error: `Already enrolled in ${campaign.name}.` };
+    await db.insert(campaignEnrollments).values({ orgId: session.orgId, campaignId, leadId, contactId: lead.primaryContactId, currentStep: 0, nextSendAt: new Date(), status: "active" });
+    await audit(session, { entityType: "enrollment", entityId: leadId, action: "enroll", after: { campaignId, campaign: campaign.name } });
+    revalidatePath(`/leads/${leadId}`); revalidatePath(`/campaigns/${campaignId}`);
+    return { ok: true, message: `Enrolled in ${campaign.name}` };
+  } catch (err) {
+    return { ok: false, error: friendlyError(err, "Could not enroll the lead.") };
+  }
 }
 
+/** Stop this lead's active enrollments, from the lead page. */
+export async function stopLeadEnrollments(leadId: string): Promise<ActionResult> {
+  const session = await requireSession();
+  try {
+    requireCan(session, "campaign:write");
+    if (!isUuid(leadId)) return { ok: false, error: "Lead not found." };
+    const db = await getDb();
+    const rows = await db.update(campaignEnrollments).set({ status: "stopped", nextSendAt: null }).where(and(eq(campaignEnrollments.leadId, leadId), eq(campaignEnrollments.orgId, session.orgId), eq(campaignEnrollments.status, "active"))).returning();
+    revalidatePath(`/leads/${leadId}`);
+    return { ok: true, message: rows.length ? `Stopped ${rows.length} ${rows.length === 1 ? "sequence" : "sequences"}` : "No active sequences" };
+  } catch (err) {
+    return { ok: false, error: friendlyError(err, "Could not stop the sequence.") };
+  }
+}
+
+/**
+ * Admin only. Deletes the lead and its timeline. The property goes too when no other lead uses it
+ * (which takes its analyses, reports, and comps), and so does the contact when nothing else links to it.
+ */
 export async function deleteLead(leadId: string): Promise<never | ActionResult> {
   const session = await requireSession();
   if (session.role !== "admin") return { ok: false, error: "Only admins delete leads." };
+  if (!isUuid(leadId)) return { ok: false, error: "Lead not found." };
   const db = await getDb();
   const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
   if (!lead) return { ok: false, error: "Lead not found." };
-  await audit(session, { entityType: "lead", entityId: leadId, action: "delete", before: lead });
-  await db.delete(leads).where(eq(leads.id, leadId));
-  revalidatePath("/leads"); revalidatePath("/pipeline");
+  try {
+    await audit(session, { entityType: "lead", entityId: leadId, action: "delete", before: lead });
+    await db.delete(leads).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
+    const otherLeadOnProperty = await db.query.leads.findFirst({ where: and(eq(leads.propertyId, lead.propertyId), eq(leads.orgId, session.orgId)) });
+    if (!otherLeadOnProperty) await db.delete(properties).where(and(eq(properties.id, lead.propertyId), eq(properties.orgId, session.orgId)));
+    if (lead.primaryContactId) {
+      const [otherLead, otherLink] = await Promise.all([
+        db.query.leads.findFirst({ where: and(eq(leads.primaryContactId, lead.primaryContactId), eq(leads.orgId, session.orgId)) }),
+        db.query.propertyContacts.findFirst({ where: and(eq(propertyContacts.contactId, lead.primaryContactId), eq(propertyContacts.orgId, session.orgId)) }),
+      ]);
+      if (!otherLead && !otherLink) await db.delete(contacts).where(and(eq(contacts.id, lead.primaryContactId), eq(contacts.orgId, session.orgId)));
+    }
+  } catch (err) {
+    return { ok: false, error: friendlyError(err, "Could not delete the lead. It may be referenced by a record that must be removed first.") };
+  }
+  revalidatePath("/leads"); revalidatePath("/pipeline"); revalidatePath("/dashboard"); revalidatePath("/analyzer");
   redirect("/leads");
 }
 

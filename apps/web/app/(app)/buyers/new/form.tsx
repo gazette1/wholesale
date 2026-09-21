@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createBuyer } from "@/lib/actions/buyers";
 import type { ActionResult } from "@/lib/actions/leads";
@@ -7,13 +7,14 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Input, Textarea, Field } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
+import { useServerForm } from "@/components/ui/action-form";
 
 export function NewBuyerForm() {
-  const [state, action, pending] = useActionState<ActionResult | null, FormData>(createBuyer, null);
+  const { state, pending, onSubmit } = useServerForm((form) => createBuyer(null, form));
   const router = useRouter();
   useEffect(() => { if (state?.ok && state.id) router.push(`/buyers/${state.id}`); }, [state, router]);
   return (
-    <form action={action} className="max-w-2xl">
+    <form onSubmit={onSubmit} className="max-w-2xl">
       <Card><CardBody className="grid gap-3 sm:grid-cols-2">
         <Field label="Company" className="sm:col-span-2"><Input name="company" placeholder="Chesapeake Capital Homes" /></Field>
         <Field label="First name"><Input name="firstName" required /></Field>

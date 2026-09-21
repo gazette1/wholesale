@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { moveLeadStage, type ActionResult } from "@/lib/actions/leads";
@@ -22,6 +22,8 @@ const SCREEN_READER_INSTRUCTIONS = { draggable: "Press Enter or Space to open th
 
 export function Board({ stages, leads, canMove, canAnalyze }: { stages: BoardStage[]; leads: BoardLead[]; canMove: boolean; canAnalyze: boolean }) {
   const [items, setItems] = useState(leads);
+  // Follow the server: a filter change, a sidebar click, or another person's edit arrives as new props.
+  useEffect(() => { setItems(leads); }, [leads]);
   const [active, setActive] = useState<BoardLead | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +35,8 @@ export function Board({ stages, leads, canMove, canAnalyze }: { stages: BoardSta
     for (const l of items) map.get(l.stageId)?.push(l);
     return map;
   }, [items, stages]);
+  const nameOf = (id: string) => items.find((l) => l.id === id)?.address ?? "the lead";
+  const stageOf = (id: string) => stages.find((st) => st.id === id)?.name ?? "a stage";
   const openLead = useMemo(() => (openId ? items.find((l) => l.id === openId) ?? null : null), [items, openId]);
 
   /** Optimistic stage change shared by drag and drop and by the quick view stage select. */
@@ -68,7 +72,17 @@ export function Board({ stages, leads, canMove, canAnalyze }: { stages: BoardSta
   return (
     <>
       {error ? <div className="mb-3 rounded-md border border-[#f3c0c0] bg-bad-soft px-3 py-2 text-[13px] text-bad">{error}</div> : null}
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActive(null)} accessibility={{ screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}>
+      <DndContext id="pipeline-board" sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActive(null)}
+        accessibility={{
+          screenReaderInstructions: SCREEN_READER_INSTRUCTIONS,
+          // Speak addresses and stage names, not record ids.
+          announcements: {
+            onDragStart: ({ active: a }) => `Picked up ${nameOf(String(a.id))}.`,
+            onDragOver: ({ active: a, over }) => (over ? `${nameOf(String(a.id))} is over ${stageOf(String(over.id))}.` : `${nameOf(String(a.id))} is not over a stage.`),
+            onDragEnd: ({ active: a, over }) => (over ? `${nameOf(String(a.id))} was moved to ${stageOf(String(over.id))}.` : `${nameOf(String(a.id))} was put back.`),
+            onDragCancel: ({ active: a }) => `Move cancelled. ${nameOf(String(a.id))} was put back.`,
+          },
+        }}>
         <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin -mx-1 px-1 min-h-[70vh] snap-x">
           {stages.map((s) => <Column key={s.id} stage={s} leads={byStage.get(s.id) ?? []} canMove={canMove} onOpen={setOpenId} />)}
         </div>
@@ -109,6 +123,7 @@ function DraggableCard({ lead, disabled, onOpen }: { lead: BoardLead; disabled: 
       ref={setNodeRef}
       {...listeners}
       {...a11y}
+      data-lead-card={lead.id}
       aria-label={`${lead.address}, ${lead.city}. Open quick view.`}
       aria-haspopup="dialog"
       onClick={() => onOpen(lead.id)}

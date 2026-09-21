@@ -1,5 +1,5 @@
 import type { LeadDetail } from "@/lib/data/leads";
-import { enrollInCampaign } from "@/lib/actions/leads";
+import { enrollInCampaign, stopLeadEnrollments } from "@/lib/actions/leads";
 import { ActionButton } from "@/components/ui/action-form";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -47,12 +47,13 @@ export function MessagesTab({ detail, templates, campaigns, canSend }: { detail:
             {detail.enrollments.map((e) => (
               <div key={e.e.id} className="flex items-center justify-between text-[13px]">
                 <span>{e.name}</span>
-                <Badge tone={e.e.status === "active" ? "good" : e.e.status === "opted_out" ? "bad" : "neutral"}>{e.e.status} · step {e.e.currentStep}</Badge>
+                <Badge tone={e.e.status === "active" ? "good" : e.e.status === "opted_out" ? "bad" : "neutral"}>{e.e.status.replace(/_/g, " ")} · step {e.e.currentStep + 1}</Badge>
               </div>
             ))}
             {canSend ? campaigns.filter((c) => c.status === "active" && !detail.enrollments.some((e) => e.e.campaignId === c.id && e.e.status === "active")).map((c) => (
               <ActionButton key={c.id} action={enrollInCampaign.bind(null, detail.lead.id, c.id)} size="sm">Enroll in {c.name}</ActionButton>
             )) : null}
+            {canSend && detail.enrollments.some((e) => e.e.status === "active") ? <ActionButton action={stopLeadEnrollments.bind(null, detail.lead.id)} size="sm" variant="ghost" className="text-bad" confirm="Stop every active sequence for this lead?">Stop active sequences</ActionButton> : null}
             {detail.enrollments.length === 0 && campaigns.filter((c) => c.status === "active").length === 0 ? <p className="text-xs text-fg-3">No active campaigns. Create one under Campaigns.</p> : null}
           </CardBody>
         </Card>

@@ -13,12 +13,14 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { ReportSummary } from "@/components/report/report-summary";
 import { money, num, shortDate, relative, addressLine } from "@/lib/utils";
 import { RawJson } from "./raw";
+import { isUuid } from "@/lib/safe";
 
 export const metadata = { title: "Property report" };
 
 export default async function PropertyReportPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const db = await getDb();
   const property = await db.query.properties.findFirst({ where: and(eq(properties.id, id), eq(properties.orgId, session.orgId)) });
   if (!property) notFound();

@@ -64,7 +64,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const seen = new Set<string>();
     const records = rows.filter(({ buyer }) => (seen.has(buyer.id) ? false : (seen.add(buyer.id), true))).map(({ buyer, criteria }) => ({
       buyer_id: buyer.id, first_name: buyer.firstName, last_name: buyer.lastName, company: buyer.company, phone: primaryPhone(buyer.phones), email: primaryEmail(buyer.emails), website: buyer.website, source: buyer.source,
-      active: buyer.active ? "yes" : "no", states: (criteria?.states ?? []).join(" "), counties: (criteria?.counties ?? []).join("; "), zips: (criteria?.zips ?? []).join(" "), property_types: (criteria?.propertyTypes ?? []).join("; "),
+      active: buyer.active ? "yes" : "no", states: (criteria?.states ?? []).join(", "), counties: (criteria?.counties ?? []).join("; "), zips: (criteria?.zips ?? []).join(" "), property_types: (criteria?.propertyTypes ?? []).join("; "),
       price_min: criteria?.priceMin, price_max: criteria?.priceMax, arv_pct_max: criteria?.arvPctMax, funding: criteria?.funding, proof_of_funds_on_file: criteria ? (criteria.proofOfFundsOnFile ? "yes" : "no") : "",
       sight_unseen: criteria ? (criteria.sightUnseen ? "yes" : "no") : "", closes_in_days: criteria?.closesInDays, last_contacted_at: buyer.lastContactedAt, notes: buyer.notes, created_at: buyer.createdAt,
     }));

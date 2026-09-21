@@ -132,7 +132,7 @@ export const LeadPayloadSchema = z.object({
   addressLine1: z.string({ required_error: "is required" }).min(3, "is required").max(200),
   addressLine2: optionalText(100),
   city: z.string({ required_error: "is required" }).min(1, "is required").max(100),
-  state: z.string({ required_error: "is required" }).regex(/^[A-Z]{2}$/, "must be a two letter state code"),
+  state: z.string({ required_error: "is required" }).regex(/^[A-Z]{2}$/, "must be a two letter code"),
   postalCode: z.string({ required_error: "is required" }).regex(/^\d{5}(-\d{4})?$/, "must be a 5 digit ZIP or ZIP+4"),
   firstName: optionalText(100),
   lastName: optionalText(100),
@@ -154,8 +154,56 @@ export type LeadPayload = z.infer<typeof LeadPayloadSchema>;
 
 export type ParseResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
+/**
+ * Internal field names mapped to the names people actually send: the CSV template columns and the documented API fields.
+ * A message must never mention a name the sender cannot find in their own file or payload.
+ */
+const PUBLIC_FIELD_NAMES: Record<string, string> = {
+  addressLine1: "address", addressLine2: "unit", postalCode: "zip",
+};
+
+export function publicFieldName(path: string): string {
+  return PUBLIC_FIELD_NAMES[path] ?? path;
+}
+
+const count = (n: number | bigint) => Number(n).toLocaleString("en-US");
+
+/** One validation issue as a plain sentence fragment, for example "notes must be 5,000 characters or fewer". Raw Zod text never passes through. */
+function issueToText(issue: z.ZodIssue): string {
+  const name = publicFieldName(String(issue.path[0] ?? "record"));
+  // A buyer row needs any one of three columns, so that message stands alone without a field name.
+  if (issue.message.startsWith("a name or company")) return issue.message;
+  if (issue.code === "too_big") {
+    if (issue.type === "string") return `${name} must be ${count(issue.maximum)} characters or fewer`;
+    if (issue.type === "array") return `${name} must list ${count(issue.maximum)} or fewer`;
+    return `${name} must be ${count(issue.maximum)} or less`;
+  }
+  if (issue.code === "too_small") {
+    if (issue.type === "string") return `${name} is required`;
+    if (issue.type === "number") return Number(issue.minimum) === 0 ? `${name} must be zero or more` : `${name} must be ${issue.minimum} or more`;
+    return `${name} is too short`;
+  }
+  if (issue.code === "invalid_type") {
+    if (issue.received === "undefined" || issue.received === "null") return `${name} is required`;
+    if (issue.expected === "number") return `${name} must be a number`;
+    return `${name} is not valid`;
+  }
+  // Messages written in this file start with a lowercase verb phrase ("is required", "must be ..."). Anything else is Zod's own wording.
+  if (/^(is|must) /.test(issue.message)) return `${name} ${issue.message}`;
+  return `${name} is not valid`;
+}
+
 function issuesToText(err: z.ZodError): string {
-  return err.issues.slice(0, 5).map((i) => `${String(i.path[0] ?? "record")} ${i.message}`).join("; ");
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const issue of err.issues) {
+    const text = issueToText(issue);
+    if (seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    if (out.length === 5) break;
+  }
+  return out.join("; ");
 }
 
 /** Validate and normalize one inbound lead record from JSON or a CSV row. */
@@ -237,12 +285,30 @@ export const BuyerPayloadSchema = z.object({
   website: optionalText(300),
   source: optionalText(100),
   notes: optionalText(5000),
-  states: z.array(z.string().regex(/^[A-Z]{2}$/, "must be two letter state codes")).max(60),
+  states: z.array(z.string().regex(/^[A-Z]{2}$/, "must be two letter codes")).max(60),
 });
 
 export type BuyerPayload = z.infer<typeof BuyerPayloadSchema>;
 
-/** Validate and normalize one buyer record from a CSV row. "states" accepts a list separated by commas, semicolons, or pipes. */
+/**
+ * "MD, PA", "md; Virginia | PA", and "MD PA" all become ["MD", "PA", ...]. Commas, semicolons, and pipes always separate.
+ * Whitespace separates only when every token is a two letter code, so "New York" and "North Carolina" stay whole.
+ */
+export function splitStates(raw: string): string[] {
+  const out: string[] = [];
+  for (const piece of raw.split(/[,;|]/)) {
+    const t = piece.trim();
+    if (!t) continue;
+    const named = STATE_NAMES[canonicalKey(t)];
+    const tokens = t.split(/\s+/);
+    if (named) out.push(named);
+    else if (tokens.length > 1 && tokens.every((x) => /^[A-Za-z]{2}$/.test(x))) out.push(...tokens.map((x) => x.toUpperCase()));
+    else out.push(normalizeState(t) ?? "");
+  }
+  return [...new Set(out.filter(Boolean))];
+}
+
+/** Validate and normalize one buyer record from a CSV row. "states" accepts a list separated by commas, semicolons, pipes, or spaces between two letter codes. */
 export function parseBuyerPayload(raw: unknown): ParseResult<BuyerPayload> {
   if (!isPlainObject(raw)) return { ok: false, error: "Each buyer must be an object." };
   const m = mapKeys(raw, BUYER_INDEX);
@@ -254,10 +320,15 @@ export function parseBuyerPayload(raw: unknown): ParseResult<BuyerPayload> {
     if (!lastName && i !== -1) lastName = name.slice(i + 1);
   }
   if (!firstName && m.company) firstName = m.company;
-  const states = (m.states ?? "").split(/[,;|]/).map((s) => normalizeState(s.trim()) ?? "").filter(Boolean);
+  const states = splitStates(m.states ?? "");
   const parsed = BuyerPayloadSchema.safeParse({ firstName, lastName, company: m.company, phone: m.phone, email: m.email?.toLowerCase(), website: m.website, source: m.source, notes: m.notes, states });
   if (!parsed.success) return { ok: false, error: issuesToText(parsed.error) };
   return { ok: true, data: parsed.data };
+}
+
+/** True when at least one header is a column name or alias the lead or buyer importer understands. Used to tell a CSV from some other file. */
+export function hasKnownCsvHeader(headers: string[]): boolean {
+  return headers.some((h) => { const k = canonicalKey(h); return k !== "" && (LEAD_INDEX.has(k) || BUYER_INDEX.has(k)); });
 }
 
 /** Column headers for the downloadable CSV templates. */

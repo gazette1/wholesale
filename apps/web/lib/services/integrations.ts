@@ -44,6 +44,8 @@ export async function verifyApiKey(rawKey: string | null | undefined): Promise<V
 
 const DELIVERY_TIMEOUT_MS = 5000;
 const MAX_CONSECUTIVE_FAILURES = 10;
+/** Delivery rows kept per endpoint. Older rows are deleted after each new delivery. */
+const DELIVERIES_KEPT = 200;
 
 type Endpoint = typeof webhookEndpoints.$inferSelect;
 export type DeliveryResult = { ok: boolean; statusCode: number | null; error: string | null; durationMs: number };
@@ -56,9 +58,14 @@ function envelope(orgId: string, event: WebhookEvent, data: Record<string, unkno
   return { id: randomUUID(), event, createdAt: new Date().toISOString(), orgId, data };
 }
 
-/** One signed POST to one endpoint. Always records a webhook_deliveries row and updates the endpoint counters. Never throws. */
+/**
+ * One signed POST to one endpoint. Always records a webhook_deliveries row and updates the endpoint counters. Never throws.
+ * The body "id" is the event id and is the same at every endpoint that receives the event. X-DealCalc-Delivery is new for
+ * each attempt and is also the id of the webhook_deliveries row, so a receiver's log line can be matched to ours.
+ */
 export async function deliverToEndpoint(endpoint: Endpoint, env: WebhookEnvelope): Promise<DeliveryResult> {
   const started = Date.now();
+  const deliveryId = randomUUID();
   let statusCode: number | null = null;
   let error: string | null = null;
   let ok = false;
@@ -75,7 +82,7 @@ export async function deliverToEndpoint(endpoint: Endpoint, env: WebhookEnvelope
         method: "POST", redirect: "manual", signal: controller.signal, body,
         headers: {
           "content-type": "application/json", "user-agent": "DealCalc-Webhooks/1.0",
-          "x-dealcalc-event": env.event, "x-dealcalc-delivery": env.id, "x-dealcalc-timestamp": timestamp,
+          "x-dealcalc-event": env.event, "x-dealcalc-delivery": deliveryId, "x-dealcalc-timestamp": timestamp,
           "x-dealcalc-signature": `sha256=${signPayload(endpoint.secret, timestamp, body)}`,
         },
       });
@@ -92,7 +99,7 @@ export async function deliverToEndpoint(endpoint: Endpoint, env: WebhookEnvelope
   const durationMs = Date.now() - started;
   try {
     const db = await getDb();
-    await db.insert(webhookDeliveries).values({ orgId: endpoint.orgId, endpointId: endpoint.id, event: env.event, payload: env as unknown as Record<string, unknown>, statusCode, ok, error, durationMs });
+    await db.insert(webhookDeliveries).values({ id: deliveryId, orgId: endpoint.orgId, endpointId: endpoint.id, event: env.event, payload: env as unknown as Record<string, unknown>, statusCode, ok, error, durationMs });
     if (ok) {
       await db.update(webhookEndpoints).set({ lastStatus: statusCode, lastDeliveryAt: new Date(), failureCount: 0 }).where(eq(webhookEndpoints.id, endpoint.id));
     } else {
@@ -102,7 +109,21 @@ export async function deliverToEndpoint(endpoint: Endpoint, env: WebhookEnvelope
   } catch {
     /* bookkeeping must not break the caller */
   }
+  await pruneDeliveries(endpoint.id);
   return { ok, statusCode, error, durationMs };
+}
+
+/** Retention: keep the newest 200 delivery rows for the endpoint and delete the rest. One statement, and a failure is ignored. */
+async function pruneDeliveries(endpointId: string): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.delete(webhookDeliveries).where(and(
+      eq(webhookDeliveries.endpointId, endpointId),
+      sql`${webhookDeliveries.id} in (select d.id from webhook_deliveries d where d.endpoint_id = ${endpointId} order by d.created_at desc, d.id desc offset ${sql.raw(String(DELIVERIES_KEPT))})`,
+    ));
+  } catch {
+    /* retention is best effort */
+  }
 }
 
 async function subscribedEndpoints(orgId: string, event: WebhookEvent): Promise<Endpoint[]> {

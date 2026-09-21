@@ -15,6 +15,13 @@
       "when": 1789998376933,
       "tag": "0002_library_and_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790002237824,
+      "tag": "0004_profiles_email_unique",
+      "breakpoints": true
     }
   ]
 }

@@ -5,12 +5,13 @@ import { cloneAnalysis, setAnalysisLibraryState, purgeAnalysis } from "@/lib/act
 import { PageHeader, EmptyState } from "@/components/ui/misc";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { ActionButton } from "@/components/ui/action-form";
 import { NewAnalysis } from "./new-analysis";
 import { money, percent, relative, cn } from "@/lib/utils";
 import { Calculator, Download } from "lucide-react";
+import { SubmitOnce } from "@/components/ui/action-form";
 
 export const metadata = { title: "Deal Analyzer" };
 const TONE: Record<string, "neutral" | "info" | "good" | "bad"> = { draft: "neutral", reviewing: "info", approved_for_offer: "good", rejected: "bad" };
@@ -48,7 +49,7 @@ export default async function AnalyzerListPage({ searchParams }: { searchParams:
     <>
       <PageHeader title="Deal Analyzer" description="Every analysis belongs to a property, so its numbers show on the pipeline card and the lead." actions={
         <>
-          <a href="/api/export/analyses.csv"><Button type="button" variant="outline"><Download className="h-4 w-4" />Export CSV</Button></a>
+          <LinkButton external href="/api/export/analyses.csv" variant="outline"><Download className="h-4 w-4" />Export CSV</LinkButton>
           {writable ? <NewAnalysis leads={pickerLeads.map((l) => ({ ...l, analyses: Number(l.analyses) }))} /> : null}
         </>
       } />
@@ -103,7 +104,7 @@ export default async function AnalyzerListPage({ searchParams }: { searchParams:
                           </>
                         ) : (
                           <>
-                            <form action={cloneAnalysis.bind(null, a.id)}><Button type="submit" variant="ghost" size="sm">Duplicate</Button></form>
+                            <form action={cloneAnalysis.bind(null, a.id)}><SubmitOnce variant="ghost" size="sm">Duplicate</SubmitOnce></form>
                             {scope === "archived"
                               ? <ActionButton action={setAnalysisLibraryState.bind(null, a.id, "unarchive")} variant="ghost">Unarchive</ActionButton>
                               : <ActionButton action={setAnalysisLibraryState.bind(null, a.id, "archive")} variant="ghost">Archive</ActionButton>}

@@ -1,12 +1,14 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, count } from "drizzle-orm";
+import { lt, and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, count } from "drizzle-orm";
 import {
   leads, properties, contacts, pipelineStages, leadSources, profiles, tags, leadTags, activities, tasks, offers, messages,
   dealAnalyses, propertyReports, propertyContacts, documents, comps, campaignEnrollments, campaigns,
 } from "@dealcalc/db";
 import { getDb } from "../db";
+import { isUuid } from "../safe";
+import { appDayBounds } from "../utils";
 
 export type LeadFilters = {
-  q?: string; stage?: string; assigned?: string; source?: string; status?: string; tag?: string; due?: "today" | "overdue" | "week";
+  q?: string; stage?: string; assigned?: string; source?: string; status?: string; tag?: string; due?: "today" | "overdue" | "week" | "now";
   sort?: string; dir?: "asc" | "desc"; page?: number; pageSize?: number; issue?: string;
   /** "1" keeps only leads with zero contact attempts. */
   untouched?: string;
@@ -26,9 +28,10 @@ export async function listProfiles(orgId: string) {
   return db.select().from(profiles).where(and(eq(profiles.orgId, orgId), eq(profiles.active, true))).orderBy(asc(profiles.fullName));
 }
 
-export async function listSources(orgId: string) {
+/** Lead sources for pickers and filters. Inactive ones are left out unless asked for (Settings lists them all). */
+export async function listSources(orgId: string, opts: { includeInactive?: boolean } = {}) {
   const db = await getDb();
-  return db.select().from(leadSources).where(eq(leadSources.orgId, orgId)).orderBy(asc(leadSources.name));
+  return db.select().from(leadSources).where(opts.includeInactive ? eq(leadSources.orgId, orgId) : and(eq(leadSources.orgId, orgId), eq(leadSources.active, true))).orderBy(asc(leadSources.name));
 }
 
 export async function listTags(orgId: string, kind?: "lead" | "buyer" | "issue") {
@@ -44,8 +47,12 @@ const SORTS: Record<string, any> = {
 export async function listLeads(orgId: string, f: LeadFilters = {}) {
   const db = await getDb();
   const where = [eq(leads.orgId, orgId)];
-  if (f.status && f.status !== "all") where.push(eq(leads.status, f.status as any));
-  else if (!f.status) where.push(eq(leads.status, "open"));
+  // Anything that is not a known status falls back to open, so a hand edited URL cannot reach the enum cast.
+  const status = ["open", "won", "lost", "nurture", "all", "board"].includes(f.status ?? "") ? f.status! : "open";
+  if (status === "board") {
+    // The board shows open leads plus leads that reached a terminal stage in the last 60 days, so Closed and Dead are not always empty.
+    where.push(or(eq(leads.status, "open"), gte(leads.stageEnteredAt, new Date(Date.now() - 60 * 86_400_000)))!);
+  } else if (status !== "all") where.push(eq(leads.status, status as "open"));
   if (f.stage) {
     // One key, or several separated by commas (the dashboard links to under_contract,due_diligence).
     const keys = f.stage.split(",").map((k) => k.trim()).filter(Boolean);
@@ -53,18 +60,23 @@ export async function listLeads(orgId: string, f: LeadFilters = {}) {
     else if (keys.length > 1) where.push(inArray(pipelineStages.key, keys));
   }
   if (f.assigned === "unassigned") where.push(isNull(leads.assignedTo));
-  else if (f.assigned) where.push(eq(leads.assignedTo, f.assigned));
+  else if (isUuid(f.assigned)) where.push(eq(leads.assignedTo, f.assigned));
   if (f.source) where.push(eq(leadSources.name, f.source));
-  if (f.q) {
-    const like = `%${f.q}%`;
+  const q = f.q?.trim().slice(0, 80);
+  if (q) {
+    // Escape LIKE wildcards so a typed percent sign or underscore is matched literally.
+    const like = `%${q.replace(/[%_\\]/g, (m) => "\\" + m)}%`;
     where.push(or(ilike(properties.addressLine1, like), ilike(properties.city, like), ilike(properties.postalCode, like), ilike(contacts.firstName, like), ilike(contacts.lastName, like), sql`${contacts.phones}::text ilike ${like}`)!);
   }
   const now = new Date();
-  if (f.due === "overdue") where.push(lte(leads.nextFollowUpAt, now));
-  if (f.due === "today") { const end = new Date(now); end.setHours(23, 59, 59, 999); where.push(lte(leads.nextFollowUpAt, end)); }
-  if (f.due === "week") where.push(lte(leads.nextFollowUpAt, new Date(now.getTime() + 7 * 86_400_000)));
+  // Day boundaries follow the app time zone. "now" is the dashboard tile: everything due today or earlier.
+  const day = appDayBounds(now);
+  if (f.due === "overdue") where.push(lt(leads.nextFollowUpAt, day.start));
+  if (f.due === "today") where.push(and(gte(leads.nextFollowUpAt, day.start), lte(leads.nextFollowUpAt, day.end))!);
+  if (f.due === "now") where.push(lte(leads.nextFollowUpAt, day.end));
+  if (f.due === "week") where.push(and(gte(leads.nextFollowUpAt, day.start), lte(leads.nextFollowUpAt, new Date(day.start.getTime() + 7 * 86_400_000)))!);
   if (f.untouched === "1") where.push(eq(leads.contactAttempts, 0));
-  if (f.created === "today") { const start = new Date(now); start.setHours(0, 0, 0, 0); where.push(gte(leads.createdAt, start)); }
+  if (f.created === "today") where.push(gte(leads.createdAt, day.start));
   if (f.created === "week") where.push(gte(leads.createdAt, new Date(now.getTime() - 7 * 86_400_000)));
   if (f.created === "month") where.push(gte(leads.createdAt, new Date(now.getTime() - 30 * 86_400_000)));
   if (f.offer === "sent") where.push(inArray(leads.id, db.select({ id: offers.leadId }).from(offers).where(and(eq(offers.orgId, orgId), eq(offers.status, "sent")))));
@@ -74,7 +86,8 @@ export async function listLeads(orgId: string, f: LeadFilters = {}) {
     where.push(inArray(leads.id, tagged));
   }
   const sortCol = SORTS[f.sort ?? "created"] ?? leads.createdAt;
-  const order = (f.dir ?? (f.sort ? "asc" : "desc")) === "asc" ? asc(sortCol) : desc(sortCol);
+  // Empty values sort last in both directions, so a descending asking price does not open with blanks.
+  const order = (f.dir ?? (f.sort ? "asc" : "desc")) === "asc" ? sql`${sortCol} asc nulls last` : sql`${sortCol} desc nulls last`;
   const pageSize = f.pageSize ?? 50;
   const page = Math.max(1, f.page ?? 1);
 
@@ -143,7 +156,7 @@ function toNum(v: string | number | null | undefined): number | null {
 
 /** Every open lead grouped by stage for the board, with the deal numbers of its primary analysis. */
 export async function boardLeads(orgId: string, assigned?: string) {
-  const { rows } = await listLeads(orgId, { status: "open", assigned, pageSize: 500, sort: "followUp", dir: "asc" });
+  const { rows } = await listLeads(orgId, { status: "board", assigned, pageSize: 500, sort: "followUp", dir: "asc" });
   const { picked } = await primaryAnalysesByProperty(orgId, rows.map((r) => r.propertyId));
   return rows.map((r) => {
     const a = picked.get(r.propertyId);
@@ -162,6 +175,7 @@ function activityText(type: string, p: Record<string, any>): string {
 
 /** Everything the pipeline quick view drawer shows for one lead, as a plain serializable object. */
 export async function leadQuickView(orgId: string, leadId: string) {
+  if (!isUuid(leadId)) return null;
   const db = await getDb();
   const [row] = await db.select({
     id: leads.id, status: leads.status, propertyId: leads.propertyId, nextFollowUpAt: leads.nextFollowUpAt, lastContactAt: leads.lastContactAt, contactAttempts: leads.contactAttempts,
@@ -223,6 +237,7 @@ export async function leadQuickView(orgId: string, leadId: string) {
 export type LeadQuickView = NonNullable<Awaited<ReturnType<typeof leadQuickView>>>;
 
 export async function getLead(orgId: string, id: string) {
+  if (!isUuid(id)) return null;
   const db = await getDb();
   const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, id), eq(leads.orgId, orgId)) });
   if (!lead) return null;

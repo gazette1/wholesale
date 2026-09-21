@@ -3,7 +3,8 @@ import { packageData } from "@/lib/services/packages";
 import { PackagePreview } from "@/components/package/preview";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Deal package", robots: { index: false, follow: false } };
+// The absolute title keeps the internal product name out of the buyer's browser tab.
+export const metadata = { title: { absolute: "Deal package" }, robots: { index: false, follow: false } };
 
 /** Public read only view of a deal package. Reached only by the unguessable share token. */
 export default async function SharePage({ params }: { params: Promise<{ token: string }> }) {
