@@ -4,6 +4,7 @@ export const EVENTS = [
   "offer.created", "offer.status_changed",
   "analysis.saved", "analysis.status_changed",
   "message.received", "buyer.created", "package.created",
+  "alert.created",
   "ping",
 ] as const;
 
