@@ -8,6 +8,7 @@ import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { money, fullName, num, shortDate, relative } from "@/lib/utils";
 import { TaskList } from "../task-list";
+import { LocalDateTime } from "@/components/ui/local-datetime";
 
 const ISSUES: { key: string; label: string }[] = [
   { key: "dirty_title", label: "Dirty title" }, { key: "probate_or_inherited", label: "Probate or inherited" }, { key: "liens_or_judgments", label: "Liens or judgments" },
@@ -151,7 +152,7 @@ export function OverviewTab({ detail, sources, tags, canWrite }: { detail: LeadD
               <Input name="title" placeholder="Call back about payoff" required />
               <div className="flex gap-2">
                 <Select name="kind" defaultValue="call" className="w-28"><option value="call">Call</option><option value="text">Text</option><option value="email">Email</option><option value="visit">Visit</option><option value="other">Other</option></Select>
-                <Input name="dueAt" type="datetime-local" className="flex-1" />
+                <LocalDateTime name="dueAt" className="flex-1" ariaLabel="Due" />
               </div>
             </ActionForm>
           </CardBody>

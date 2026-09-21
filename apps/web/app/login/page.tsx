@@ -6,13 +6,15 @@ import { signInWithPassword, signUpWithPassword, sendMagicLink } from "./actions
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { Alert } from "@/components/ui/misc";
+import { safeNext } from "./safe-next";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string; sent?: string; mode?: string }> }) {
   const session = await getSession();
   const sp = await searchParams;
-  if (session) redirect(sp.next && sp.next.startsWith("/") ? sp.next : "/dashboard");
+  const next = safeNext(typeof sp.next === "string" ? sp.next : undefined);
+  if (session) redirect(next);
   const configured = supabaseConfigured();
   const mode = sp.mode === "signup" ? "signup" : sp.mode === "magic" ? "magic" : "signin";
   const action = mode === "signup" ? signUpWithPassword : mode === "magic" ? sendMagicLink : signInWithPassword;
@@ -31,7 +33,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <Alert tone="warn">Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY, or set DEV_AUTH_EMAIL to a seeded profile for local work.</Alert>
           ) : (
             <form action={action} className="space-y-3">
-              <input type="hidden" name="next" value={sp.next ?? "/dashboard"} />
+              <input type="hidden" name="next" value={next} />
               <h1 className="text-base font-semibold">{mode === "signup" ? "Create your account" : mode === "magic" ? "Email me a sign in link" : "Sign in"}</h1>
               {sp.error ? <Alert tone="bad">{sp.error}</Alert> : null}
               {sp.sent ? <Alert tone="good">Check your email for the sign in link.</Alert> : null}

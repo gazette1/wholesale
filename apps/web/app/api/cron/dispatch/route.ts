@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { dispatchDue } from "@/lib/services/campaigns";
+import { raiseAlerts } from "@/lib/services/alerts";
 import { ensureDevDatabase } from "@dealcalc/db";
 
 export const dynamic = "force-dynamic";
@@ -12,5 +13,6 @@ export async function GET(request: NextRequest) {
   if (!secret || auth !== `Bearer ${secret}`) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await ensureDevDatabase();
   const result = await dispatchDue(100);
-  return NextResponse.json(result);
+  const alerts = await raiseAlerts();
+  return NextResponse.json({ ...result, alerts });
 }

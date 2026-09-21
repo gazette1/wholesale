@@ -2,6 +2,7 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import Link from "next/link";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:pointer-events-none disabled:opacity-50 select-none",
@@ -36,5 +37,15 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ classN
   </button>
 ));
 Button.displayName = "Button";
+
+/**
+ * A link that looks like a button. Use this instead of wrapping <Button> in <Link>: a button inside an
+ * anchor is invalid HTML and gives keyboard and screen reader users two nested controls.
+ */
+export function LinkButton({ href, variant, size, className, children, external, ...rest }: { href: string; className?: string; children: React.ReactNode; external?: boolean } & VariantProps<typeof buttonVariants> & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href">) {
+  const cls = cn(buttonVariants({ variant, size }), className);
+  if (external) return <a href={href} className={cls} {...rest}>{children}</a>;
+  return <Link href={href} className={cls} {...rest}>{children}</Link>;
+}
 
 export { buttonVariants };

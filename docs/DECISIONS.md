@@ -71,3 +71,12 @@ Each entry: Decision, Why, What we gave up, Revisit when.
 - **Why.** The sheet's typed number equals the checklist total today but is not linked (A-04). Linking removes the most likely silent error in daily use.
 - **What we gave up.** The typed number as the default. A contractor quote still fits through the override.
 - **Revisit when.** Ous says he never uses the checklist for offers.
+
+## D-11 Lien interest is entered as an annual rate
+
+- **Decision.** Each lien has one input, an annual interest rate. The engine turns it into the workbook's own shape: the lien's interest only cell becomes annual divided by 12 and its other rate cell becomes zero (`annualRates()` in `packages/engine/src/acquisitions.ts`). Interest for the hold is lien times annual rate, divided by 12, times hold months. Decided by Russ on 2026-09-21. Engine version 0.3.0.
+- **Why.** The sheet has two rate cells per lien and neither takes an annual rate. F21 multiplies its rate by the lien and by the hold months, so a typed 12 percent charges 12 percent a month. Ous never uses that cell; he types `=0.14/12` into the interest only cell instead (A-03). F25 leaves the hold months out for the second lien (A-21). A loan quotes an annual rate and accrues monthly, so one annual field is what a user expects, and it removes the hand division.
+- **Parity.** For the first lien this reproduces the workbook's cached numbers to the cent. `tests/annualRates.test.ts` pins financing, net profit, and both draw schedule returns to the golden fixture with 14 percent entered as an annual rate. The golden tests themselves still run on the raw workbook cells and are unchanged.
+- **What we gave up.** The second lien no longer follows F25. It accrues per hold month like the first lien. No saved deal has a second lien, so no stored result changes. Versions saved before 0.3.0 open with an equivalent annual rate: exact for the first lien, and for the second lien the once only charge is spread over the hold so the total at the saved hold length is the same.
+- **Revisit when.** Ous says a lender of his charges interest some other way, such as on the drawn balance only. That is the multi loan financing model listed as deferred in `docs/MAC_PARITY.md`.
+

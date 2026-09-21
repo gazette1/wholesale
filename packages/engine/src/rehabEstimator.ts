@@ -6,6 +6,9 @@ export type RehabLine = {
   answer: "Yes" | "No" | null;
   quantity: number | null;
   unitCost: number | null;
+  status?: "todo" | "in_progress" | "done" | null;
+  notes?: string | null;
+  custom?: boolean;
 };
 
 export type RehabEstimatorInput = { address?: string | null; lines: RehabLine[] };

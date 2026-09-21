@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, boolean, jsonb, numeric, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, boolean, jsonb, numeric, integer, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { base, fundingEnum, submissionResponseEnum } from "./_shared";
 import { orgs, profiles } from "./identity";
 import { properties } from "./properties";
@@ -76,4 +76,18 @@ export const dealSubmissions = pgTable("deal_submissions", {
   response: submissionResponseEnum("response").notNull().default("none"),
   responseAmount: numeric("response_amount", { precision: 14, scale: 2 }),
   notes: text("notes"),
+  /** Per buyer share token, so an open can be attributed to one buyer rather than to the package. */
+  token: text("token").unique(),
+  firstOpenedAt: timestamp("first_opened_at", { withTimezone: true }),
+  openCount: integer("open_count").notNull().default(0),
 }, (t) => [index("deal_submissions_analysis_idx").on(t.analysisId), index("deal_submissions_buyer_idx").on(t.buyerId)]);
+
+/** One row per org. Weights learned from past submissions and their responses. Absent or under the sample floor means the default weights are used. */
+export const buyerMatchModels = pgTable("buyer_match_models", {
+  ...base,
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  weights: jsonb("weights").$type<Record<string, number>>().notNull().default({}),
+  explanations: jsonb("explanations").$type<Record<string, string>>().notNull().default({}),
+  sampleSize: integer("sample_size").notNull().default(0),
+  trainedAt: timestamp("trained_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("buyer_match_models_org").on(t.orgId)]);

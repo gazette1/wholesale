@@ -20,6 +20,11 @@ const EnvSchema = z.object({
   TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
 
+  VOICE_PROVIDER: z.enum(["mock", "twilio"]).default("mock"),
+  TWILIO_API_KEY_SID: z.string().optional(),
+  TWILIO_API_KEY_SECRET: z.string().optional(),
+  TWILIO_TWIML_APP_SID: z.string().optional(),
+
   EMAIL_PROVIDER: z.enum(["mock", "resend"]).default("mock"),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("Acquisitions Team <deals@example.com>"),
@@ -54,6 +59,9 @@ export function providerStatus() {
   return {
     propertyData: e.PROPERTY_DATA_PROVIDER === "realestateapi" && e.REALESTATEAPI_KEY ? "realestateapi" : "mock",
     sms: e.MESSAGING_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN ? "twilio" : "mock",
+    voice: e.VOICE_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN ? "twilio" : "mock",
+    /** Browser calling also needs an API key and a TwiML app. Without them Twilio voice places bridge calls only. */
+    voiceBrowser: Boolean(e.VOICE_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_API_KEY_SID && e.TWILIO_API_KEY_SECRET && e.TWILIO_TWIML_APP_SID),
     email: e.EMAIL_PROVIDER === "resend" && e.RESEND_API_KEY ? "resend" : "mock",
     judgment: e.JUDGMENT_PROVIDER === "typesafe" && e.TYPESAFE_API_KEY ? "typesafe" : "mock",
     database: e.DATABASE_URL ? "postgres" : "pglite",

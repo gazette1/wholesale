@@ -30,11 +30,14 @@ export function Label({ className, children, hint, ...props }: React.LabelHTMLAt
 }
 
 export function Field({ label, hint, children, className, error }: { label: string; hint?: string; children: React.ReactNode; className?: string; error?: string }) {
+  // The label element wraps the control, which ties them together for screen readers and makes the text clickable.
   return (
     <div className={cn("min-w-0", className)}>
-      <Label hint={hint}>{label}</Label>
-      {children}
-      {error ? <p className="mt-1 text-xs text-bad">{error}</p> : null}
+      <label className="block">
+        <span className="block text-xs font-medium text-fg-2 mb-1">{label}{hint ? <span className="ml-1 text-fg-3 font-normal cursor-help" title={hint} aria-label={hint}>?</span> : null}</span>
+        {children}
+      </label>
+      {error ? <p role="alert" className="mt-1 text-xs text-bad">{error}</p> : null}
     </div>
   );
 }

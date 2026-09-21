@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = [/^\/login/, /^\/share\//, /^\/api\/webhooks\//, /^\/api\/cron\//, /^\/api\/health/, /^\/_next\//, /^\/favicon/];
+const PUBLIC = [/^\/login/, /^\/share\//, /^\/api\/webhooks\//, /^\/api\/v1\//, /^\/api\/cron\//, /^\/api\/health/, /^\/_next\//, /^\/favicon/];
 
 /** Refreshes the Supabase session cookie and gates app routes. Dev auth (DEV_AUTH_EMAIL) bypasses the gate outside production. */
 export async function middleware(request: NextRequest) {

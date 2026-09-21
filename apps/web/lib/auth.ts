@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { profiles, orgs } from "@dealcalc/db";
 import { getDb } from "./db";
 import { supabaseConfigured, supabaseServer } from "./supabase/server";
@@ -36,7 +36,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
       let profile = await db.query.profiles.findFirst({ where: eq(profiles.userId, user.id) });
       if (!profile && user.email) {
         // First login: claim the seeded profile that carries this email.
-        const unclaimed = await db.query.profiles.findFirst({ where: and(eq(profiles.email, user.email.toLowerCase()), eq(profiles.active, true)) });
+        // Oldest first, so the result is the same on every login even if the address exists in more than one workspace.
+        const unclaimed = await db.query.profiles.findFirst({ where: and(eq(profiles.email, user.email.toLowerCase()), eq(profiles.active, true)), orderBy: asc(profiles.createdAt) });
         if (unclaimed && !unclaimed.userId) {
           await db.update(profiles).set({ userId: user.id }).where(eq(profiles.id, unclaimed.id));
           profile = { ...unclaimed, userId: user.id };
@@ -48,7 +49,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
   }
 
   if (devEmail) {
-    const profile = await db.query.profiles.findFirst({ where: and(eq(profiles.email, devEmail.toLowerCase()), eq(profiles.active, true)) });
+    const profile = await db.query.profiles.findFirst({ where: and(eq(profiles.email, devEmail.toLowerCase()), eq(profiles.active, true)), orderBy: asc(profiles.createdAt) });
     if (profile) return toSession(db, profile, "dev");
   }
   return null;

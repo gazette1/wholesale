@@ -56,7 +56,7 @@ export function TabNav({ tabs, current }: { tabs: { key: string; label: string; 
 
 export function Alert({ tone = "info", children, className }: { tone?: "info" | "warn" | "bad" | "good"; children: React.ReactNode; className?: string }) {
   const map = { info: "bg-info-soft text-[#1d4f8a] border-[#c6dbf3]", warn: "bg-warn-soft text-warn border-[#f3d9b0]", bad: "bg-bad-soft text-bad border-[#f3c0c0]", good: "bg-good-soft text-good border-[#bfe3c9]" };
-  return <div className={cn("rounded-md border px-3 py-2 text-[13px]", map[tone], className)}>{children}</div>;
+  return <div role={tone === "bad" ? "alert" : "status"} className={cn("rounded-md border px-3 py-2 text-[13px]", map[tone], className)}>{children}</div>;
 }
 
 export function KeyValue({ items, cols = 2 }: { items: { label: string; value: React.ReactNode }[]; cols?: 1 | 2 | 3 | 4 }) {
