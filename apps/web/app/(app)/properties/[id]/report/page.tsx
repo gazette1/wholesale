@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
-import { properties, propertyReports, leads } from "@dealcalc/db";
+import { properties, propertyReports, leads, documents } from "@dealcalc/db";
 import { getDb } from "@/lib/db";
 import { requireSession, can } from "@/lib/auth";
 import { propertyComps } from "@/lib/data/leads";
 import { runEnrichment } from "@/lib/actions/leads";
+import { checkEnrichmentBudget, estimatedReportCostCents } from "@/lib/services/enrichment-budget";
 import { ActionButton } from "@/components/ui/action-form";
 import { PageHeader } from "@/components/ui/misc";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { ReportSummary } from "@/components/report/report-summary";
+import { PropertyDocuments } from "./documents";
 import { money, num, shortDate, relative, addressLine } from "@/lib/utils";
 import { RawJson } from "./raw";
 import { isUuid } from "@/lib/safe";
@@ -24,10 +26,12 @@ export default async function PropertyReportPage({ params }: { params: Promise<{
   const db = await getDb();
   const property = await db.query.properties.findFirst({ where: and(eq(properties.id, id), eq(properties.orgId, session.orgId)) });
   if (!property) notFound();
-  const [reports, comps, lead] = await Promise.all([
+  const [reports, comps, lead, docs, budget] = await Promise.all([
     db.select().from(propertyReports).where(eq(propertyReports.propertyId, id)).orderBy(desc(propertyReports.fetchedAt)).limit(10),
     propertyComps(id),
     db.query.leads.findFirst({ where: eq(leads.propertyId, id), orderBy: desc(leads.createdAt) }),
+    db.select().from(documents).where(and(eq(documents.orgId, session.orgId), eq(documents.propertyId, id))).orderBy(desc(documents.createdAt)),
+    checkEnrichmentBudget(session.orgId, id, estimatedReportCostCents()),
   ]);
   const report = reports[0];
   const mapUrl = property.lat && property.lng ? `https://www.google.com/maps?q=${property.lat},${property.lng}` : `https://www.google.com/maps/search/${encodeURIComponent(addressLine(property))}`;
@@ -38,7 +42,15 @@ export default async function PropertyReportPage({ params }: { params: Promise<{
       <PageHeader crumbs={[{ label: "Leads", href: "/leads" }, ...(lead ? [{ label: property.addressLine1, href: `/leads/${lead.id}` }] : []), { label: "Property report" }]} title={property.addressLine1} description={`${property.city}, ${property.state} ${property.postalCode}${property.county ? ` · ${property.county} County` : ""}`}
         actions={<>
           <a href={mapUrl} target="_blank" rel="noreferrer" className="text-[13px] text-brand hover:underline">Open map</a>
-          {can(session, "lead:write") ? <ActionButton action={runEnrichment.bind(null, id, lead?.id)} variant="primary" size="md">{report ? "Refresh from provider" : "Pull report"}</ActionButton> : null}
+          {can(session, "lead:write") ? (
+            budget.allowed ? (
+              <ActionButton action={runEnrichment.bind(null, id, lead?.id)} variant="primary" size="md">{report ? "Refresh from provider" : "Pull report"}</ActionButton>
+            ) : session.role === "admin" ? (
+              <ActionButton action={runEnrichment.bind(null, id, lead?.id, true)} variant="outline" size="md" confirm={`${budget.reason} Run it anyway and count it against the budget?`}>{report ? "Refresh anyway" : "Pull anyway"}</ActionButton>
+            ) : (
+              <span className="text-xs text-bad" title={budget.reason}>Report budget reached</span>
+            )
+          ) : null}
         </>} />
       {report ? (
         <>
@@ -48,7 +60,8 @@ export default async function PropertyReportPage({ params }: { params: Promise<{
       ) : <Card><CardBody className="text-[13px] text-fg-3">No report yet. Pull one to see ownership, valuation, mortgages, liens, tax, and distress signals.</CardBody></Card>}
 
       <Card className="mt-4">
-        <CardHeader title="Comparable sales" description={avgPerSqft ? `${included.length} included · average ${money(avgPerSqft)} per sq ft${property.sqft ? ` · implies ${money(avgPerSqft * property.sqft)} for ${num(property.sqft)} sq ft` : ""}` : "No comps yet"} />
+        <CardHeader title="Comparable sales" description={avgPerSqft ? `${included.length} included · average ${money(avgPerSqft)} per sq ft${property.sqft ? ` · implies ${money(avgPerSqft * property.sqft)} for ${num(property.sqft)} sq ft` : ""}` : "No comps yet"}
+          actions={<Link href={`/properties/${id}/comps`} className="text-[13px] text-brand hover:underline">Comps and ARV workspace</Link>} />
         <CardBody className="p-0">
           {comps.length ? (
             <Table>
@@ -65,6 +78,8 @@ export default async function PropertyReportPage({ params }: { params: Promise<{
       </Card>
 
       {report && session.role === "admin" ? <RawJson raw={report.raw as Record<string, unknown>} normalized={report.normalized as unknown as Record<string, unknown>} /> : null}
+
+      <PropertyDocuments propertyId={id} docs={docs} canWrite={can(session, "lead:write")} sessionProfileId={session.profileId} isAdmin={session.role === "admin"} />
     </>
   );
 }

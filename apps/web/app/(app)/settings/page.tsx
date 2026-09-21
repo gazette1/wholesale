@@ -6,13 +6,15 @@ import { requireSession } from "@/lib/auth";
 import { listStages, listProfiles, listSources, listTags } from "@/lib/data/leads";
 import { inviteProfile, updateProfile, saveStage, moveStage, saveSource, updateSource, saveBranding, deleteTag } from "@/lib/actions/settings";
 import { createTag } from "@/lib/actions/leads";
+import { saveEnrichmentSettings } from "@/lib/actions/enrichment-settings";
 import { ActionForm, ActionButton } from "@/components/ui/action-form";
 import { PageHeader, TabNav, Alert } from "@/components/ui/misc";
-import { Card, CardHeader, CardBody } from "@/components/ui/card";
+import { Card, CardHeader, CardBody, Stat } from "@/components/ui/card";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { dateTime } from "@/lib/utils";
+import { dateTime, money } from "@/lib/utils";
 import { loadIntegrationSettings, SUBSCRIBABLE_EVENTS } from "@/lib/services/integrations";
+import { getEnrichmentSettings, enrichmentSpend, estimatedReportCostCents } from "@/lib/services/enrichment-budget";
 import { IntegrationsPanel } from "./integrations-panel";
 
 export const metadata = { title: "Settings" };
@@ -35,7 +37,7 @@ function auditLabel(side: unknown): string | null {
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const session = await requireSession();
-  const TABS = ["team", "pipeline", "tags", "branding", "integrations", "audit"];
+  const TABS = ["team", "pipeline", "tags", "branding", "integrations", "enrichment", "audit"];
   const sp = await searchParams;
   // An unknown or repeated tab value shows the team tab instead of an empty page.
   const tab = typeof sp.tab === "string" && TABS.includes(sp.tab) ? sp.tab : "team";
@@ -49,11 +51,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const status = providerStatus();
   // Keys and webhook secrets are loaded for admins only, and only on the tab that shows them.
   const connect = tab === "integrations" && isAdmin ? await loadIntegrationSettings(session.orgId) : { keys: [], webhooks: [] };
+  const enrichment = tab === "enrichment" ? await Promise.all([getEnrichmentSettings(session.orgId), enrichmentSpend(session.orgId)]).then(([settings, spend]) => ({ settings, spend })) : null;
   const branding = (org?.branding ?? {}) as Record<string, string | undefined>;
   const tabs = TABS.map((t) => ({ key: t, label: t[0]!.toUpperCase() + t.slice(1), href: `/settings?tab=${t}` }));
   return (
     <>
-      <PageHeader title="Settings" description={isAdmin ? "Team, pipeline, tags, branding, integrations, and the audit log." : "Read only. Ask an admin to change settings."} />
+      <PageHeader title="Settings" description={isAdmin ? "Team, pipeline, tags, branding, integrations, enrichment, and the audit log." : "Read only. Ask an admin to change settings."} />
       <TabNav tabs={tabs} current={tab} />
       <div className="mt-4">
         {tab === "team" ? (
@@ -67,6 +70,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                       <Field label={p.id === session.profileId ? "Email (your login, fixed)" : "Email"} className="sm:col-span-2"><Input name="email" type="email" defaultValue={p.email} disabled={!isAdmin} readOnly={p.id === session.profileId} required /></Field>
                       <Field label="Role"><Select name="role" defaultValue={p.role} disabled={!isAdmin}><option value="admin">Admin</option><option value="acquisitions">Acquisitions</option><option value="dispositions">Dispositions</option><option value="viewer">Viewer</option></Select></Field>
                       <Field label="Active"><Select name="active" defaultValue={p.active ? "on" : "off"} disabled={!isAdmin}><option value="on">Yes</option><option value="off">No</option></Select></Field>
+                      <Field label="Phone for bridged calls" hint="Rings first when this person places a call" className="sm:col-span-3"><Input name="phone" defaultValue={p.phone ?? ""} disabled={!isAdmin} placeholder="+14105550000" /></Field>
                       <Field label="Twilio number for outbound texts" className="sm:col-span-3"><Input name="twilioNumber" defaultValue={p.twilioNumber ?? ""} disabled={!isAdmin} placeholder="+14105550000" /></Field>
                       <div className="sm:col-span-3 text-xs text-fg-3 pb-2">{p.userId ? "Signed in before" : "Has not signed in yet. They sign up with this email."}</div>
                     </ActionForm>
@@ -180,6 +184,34 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         ) : null}
 
         {tab === "integrations" ? <div className="mt-6 max-w-4xl"><IntegrationsPanel isAdmin={isAdmin} keys={connect.keys} webhooks={connect.webhooks} events={SUBSCRIBABLE_EVENTS} origin={process.env.APP_URL ?? ""} /></div> : null}
+
+        {tab === "enrichment" && enrichment ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 max-w-4xl">
+            <Card className="lg:col-span-2 min-w-0"><CardHeader title="Automatic property reports" description="Fetch a property report when a lead is created, inside a per lead limit and a monthly budget. A report that would go over either limit is skipped and noted on the lead." /><CardBody>
+              {isAdmin ? (
+                <ActionForm action={saveEnrichmentSettings} submitLabel="Save enrichment settings" className="grid gap-3 sm:grid-cols-3">
+                  <Field label="Report on new leads"><Select name="autoEnrichOnCreate" defaultValue={enrichment.settings.autoEnrichOnCreate ? "on" : "off"}><option value="off">Off</option><option value="on">On</option></Select></Field>
+                  <Field label="Per lead limit, dollars"><Input name="perLeadCap" type="number" min={0} max={1000} step="0.01" required defaultValue={(enrichment.settings.perLeadCapCents / 100).toFixed(2)} /></Field>
+                  <Field label="Monthly budget, dollars"><Input name="monthlyBudget" type="number" min={0} max={100000} step="0.01" required defaultValue={(enrichment.settings.monthlyBudgetCents / 100).toFixed(2)} /></Field>
+                </ActionForm>
+              ) : (
+                <>
+                  <Stat label="Report on new leads" value={enrichment.settings.autoEnrichOnCreate ? "On" : "Off"} />
+                  <Stat label="Per lead limit" value={money(enrichment.settings.perLeadCapCents / 100, { cents: true })} />
+                  <Stat label="Monthly budget" value={money(enrichment.settings.monthlyBudgetCents / 100, { cents: true })} />
+                </>
+              )}
+              <p className="text-xs text-fg-3 mt-3">The per lead limit covers every report on the same property. The month is the calendar month in the app time zone. Reports run by hand from a lead are not limited yet.</p>
+            </CardBody></Card>
+            <Card className="min-w-0 self-start"><CardHeader title="This month" description="From the recorded cost of each report" /><CardBody>
+              <Stat label="Spent" value={money(enrichment.spend.monthCents / 100, { cents: true })} tone={enrichment.spend.monthCents >= enrichment.settings.monthlyBudgetCents && enrichment.spend.monthCents > 0 ? "bad" : undefined} />
+              <Stat label="Budget" value={money(enrichment.settings.monthlyBudgetCents / 100, { cents: true })} />
+              <Stat label="Left" value={money(Math.max(0, enrichment.settings.monthlyBudgetCents - enrichment.spend.monthCents) / 100, { cents: true })} />
+              <Stat label="Reports fetched" value={enrichment.spend.monthReports} />
+              <Stat label="Estimated cost of the next report" value={status.propertyData === "mock" ? "$0.00, sample data" : money(estimatedReportCostCents() / 100, { cents: true })} hint="An estimate used for the budget check. The provider does not publish a per call price to the app yet." />
+            </CardBody></Card>
+          </div>
+        ) : null}
 
         {tab === "audit" ? (
           <Card className="min-w-0"><CardHeader title="Audit log" description="Last 100 changes, newest first" /><CardBody className="p-0 min-w-0">

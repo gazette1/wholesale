@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSession, can } from "@/lib/auth";
 import { getLead, listStages, listProfiles, listSources, listTags } from "@/lib/data/leads";
+import { listLeadCalls } from "@/lib/data/calls";
 import { templatesFor } from "@/lib/services/messaging";
 import { listCampaigns } from "@/lib/data/campaigns";
 import { PageHeader, TabNav, KeyValue, Alert } from "@/components/ui/misc";
@@ -16,6 +17,8 @@ import { MessagesTab } from "./tabs/messages";
 import { ReportSummary } from "@/components/report/report-summary";
 import { AnalyzerTab } from "./tabs/analyzer";
 import { OffersTab } from "./tabs/offers";
+import { DocumentsTab } from "./tabs/documents";
+import { CallsTab } from "./tabs/calls";
 import { runEnrichment, deleteLead } from "@/lib/actions/leads";
 import type { ActionResult } from "@/lib/actions/leads";
 import { ActionButton, SubmitOnce } from "@/components/ui/action-form";
@@ -31,10 +34,11 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const { id } = await params;
   const { tab: tabParam } = await searchParams;
   // An unknown tab name falls back to the overview instead of an empty page.
-  const tab = ["overview", "activity", "messages", "report", "analyzer", "offers"].includes(tabParam ?? "") ? tabParam! : "overview";
+  const tab = ["overview", "activity", "messages", "calls", "report", "analyzer", "offers", "documents"].includes(tabParam ?? "") ? tabParam! : "overview";
   const detail = await getLead(session.orgId, id);
   if (!detail) notFound();
   const [stages, team, sources, tagList, templates, campaigns] = await Promise.all([listStages(session.orgId), listProfiles(session.orgId), listSources(session.orgId), listTags(session.orgId), templatesFor(session.orgId), listCampaigns(session.orgId)]);
+  const leadCalls = tab === "calls" ? await listLeadCalls(session.orgId, id) : [];
   const { lead, property, stage, primaryContact } = detail;
   const primaryAnalysis = detail.analyses.find((a) => a.isPrimary) ?? detail.analyses[0] ?? null;
   const due = dueLabel(lead.nextFollowUpAt);
@@ -42,8 +46,8 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const email = primaryContact?.emails.find((e) => e.isPrimary)?.address ?? primaryContact?.emails[0]?.address;
   const writable = can(session, "lead:write");
   const tabs = [
-    { key: "overview", label: "Overview" }, { key: "activity", label: "Activity", count: detail.activities.length }, { key: "messages", label: "Messages", count: detail.messages.length },
-    { key: "report", label: "Property report" }, { key: "analyzer", label: "Analyzer", count: detail.analyses.length }, { key: "offers", label: "Offers", count: detail.offers.length },
+    { key: "overview", label: "Overview" }, { key: "activity", label: "Activity", count: detail.activities.length }, { key: "messages", label: "Messages", count: detail.messages.length }, { key: "calls", label: "Calls" },
+    { key: "report", label: "Property report" }, { key: "analyzer", label: "Analyzer", count: detail.analyses.length }, { key: "offers", label: "Offers", count: detail.offers.length }, { key: "documents", label: "Documents", count: detail.documents.length },
   ].map((t) => ({ ...t, href: `/leads/${id}?tab=${t.key}` }));
 
   return (
@@ -71,6 +75,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
         {tab === "overview" ? <OverviewTab detail={detail} sources={sources} tags={tagList} canWrite={writable} /> : null}
         {tab === "activity" ? <ActivityTab detail={detail} team={team.map((p) => ({ id: p.id, name: p.fullName }))} sessionProfileId={session.profileId} /> : null}
         {tab === "messages" ? <MessagesTab detail={detail} templates={templates} campaigns={campaigns} canSend={can(session, "message:send")} /> : null}
+        {tab === "calls" ? <CallsTab detail={detail} calls={leadCalls} canCall={can(session, "message:send")} /> : null}
         {tab === "report" ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -85,6 +90,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
         ) : null}
         {tab === "analyzer" ? <AnalyzerTab detail={detail} canWrite={can(session, "analysis:write")} /> : null}
         {tab === "offers" ? <OffersTab detail={detail} canWrite={writable} /> : null}
+        {tab === "documents" ? <DocumentsTab detail={detail} canWrite={writable} sessionProfileId={session.profileId} isAdmin={session.role === "admin"} /> : null}
       </div>
       {session.role === "admin" ? (
         <div className="mt-8 pt-4 border-t border-border flex items-center justify-between gap-3">

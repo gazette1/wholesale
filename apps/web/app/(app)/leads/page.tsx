@@ -1,11 +1,15 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/auth";
+import { requireSession, can } from "@/lib/auth";
 import { listLeads, listStages, listProfiles, listSources, listTags, type LeadFilters } from "@/lib/data/leads";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, THead, TBody, TH, TD } from "@/components/ui/table";
+import { listCampaigns } from "@/lib/data/campaigns";
+import { listSavedViews, VIEW_FILTER_KEYS } from "@/lib/data/saved-views";
 import { ClickableRow } from "./clickable-row";
+import { BulkSelectProvider, RowCheckbox, HeaderCheckbox, BulkBar } from "./bulk-select";
+import { SavedViews } from "./saved-views";
 import { StageBadge, Badge } from "@/components/ui/badge";
 import { money, dueLabel, relative, fullName, cn } from "@/lib/utils";
 import { Plus, ArrowUpDown } from "lucide-react";
@@ -21,8 +25,15 @@ const COLUMNS: { key: string; label: string; sort?: string; right?: boolean }[] 
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const filters: LeadFilters = { q: sp.q, stage: sp.stage, assigned: sp.assigned, source: sp.source, status: sp.status ?? "open", tag: sp.tag, due: sp.due as any, sort: sp.sort, dir: sp.dir as any, page: Number(sp.page ?? 1), issue: sp.issue, untouched: sp.untouched, created: sp.created as any, offer: sp.offer };
-  const [data, stages, team, sources, tagList] = await Promise.all([listLeads(session.orgId, filters), listStages(session.orgId), listProfiles(session.orgId), listSources(session.orgId), listTags(session.orgId)]);
+  const filters: LeadFilters = { q: sp.q, stage: sp.stage, assigned: sp.assigned, source: sp.source, status: sp.status ?? "open", tag: sp.tag, due: sp.due as any, sort: sp.sort, dir: sp.dir as any, page: Number(sp.page ?? 1), issue: sp.issue, untouched: sp.untouched, created: sp.created as any, offer: sp.offer, createdFrom: sp.createdFrom, createdTo: sp.createdTo };
+  const selectedColumns = COLUMNS.filter((c) => (sp.cols ?? "").split(",").includes(c.key));
+  const visibleColumns = selectedColumns.length ? selectedColumns : COLUMNS;
+  const visible = (key: string) => visibleColumns.some((c) => c.key === key);
+  const canBulk = can(session, "lead:write");
+  const canEnroll = canBulk && can(session, "campaign:write");
+  const [data, stages, team, sources, tagList, views, campaignList] = await Promise.all([listLeads(session.orgId, filters), listStages(session.orgId), listProfiles(session.orgId), listSources(session.orgId), listTags(session.orgId), listSavedViews(session.orgId, session.profileId, "leads"), canEnroll ? listCampaigns(session.orgId) : Promise.resolve([])]);
+  const currentFilters = Object.fromEntries(VIEW_FILTER_KEYS.leads.map((k) => [k, sp[k]]).filter((e): e is [string, string] => typeof e[1] === "string" && e[1] !== ""));
+  const builtInViews: { label: string; filters: Record<string, string> }[] = [{ label: "Call now", filters: { due: "now", status: "open" } }, { label: "Untouched", filters: { untouched: "1", status: "open" } }, { label: "Offers out", filters: { stage: "offer_sent", status: "open" } }, { label: "Messy deals", filters: { issue: "dirty_title", status: "open" } }, { label: "Mine", filters: { assigned: session.profileId, status: "open" } }];
   const link = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries({ ...sp, ...patch })) if (v) p.set(k, v);
@@ -37,6 +48,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       <PageHeader title="Leads" description={`${data.total} ${filters.status === "all" ? "" : `${filters.status} `}${data.total === 1 ? "lead" : "leads"}${sp.issue ? `, flagged ${sp.issue.replace(/_/g, " ")}` : ""}`} actions={<LinkButton href="/leads/new" variant="primary"><Plus className="h-4 w-4" />New lead</LinkButton>} />
       <form method="get" className="flex flex-wrap items-end gap-2 mb-3">
         {/* Filters that have no control of their own ride along, so Apply does not drop them. */}
+        {sp.cols ? <input type="hidden" name="cols" value={sp.cols} /> : null}
         {sp.sort ? <input type="hidden" name="sort" value={sp.sort} /> : null}
         {sp.dir ? <input type="hidden" name="dir" value={sp.dir} /> : null}
         {sp.issue ? <input type="hidden" name="issue" value={sp.issue} /> : null}
@@ -47,22 +59,21 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         <Select name="due" defaultValue={sp.due ?? ""} className="w-36"><option value="">Any follow up</option><option value="now">Due today or overdue</option><option value="overdue">Overdue</option><option value="today">Due today</option><option value="week">Next 7 days</option></Select>
         <Select name="untouched" defaultValue={sp.untouched ?? ""} className="w-36"><option value="">Any attempts</option><option value="1">Untouched</option></Select>
         <Select name="created" defaultValue={sp.created ?? ""} className="w-36"><option value="">Created any time</option><option value="today">Created today</option><option value="week">New this week</option><option value="month">Last 30 days</option></Select>
+        <Input type="date" name="createdFrom" defaultValue={sp.createdFrom} aria-label="Created from" className="w-36" />
+        <Input type="date" name="createdTo" defaultValue={sp.createdTo} aria-label="Created to" className="w-36" />
         <Select name="offer" defaultValue={sp.offer ?? ""} className="w-36"><option value="">Any offer state</option><option value="sent">Offer out</option></Select>
         <Select name="tag" defaultValue={sp.tag ?? ""} className="w-40"><option value="">Any tag</option>{tagList.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}</Select>
         <Select name="status" defaultValue={sp.status ?? "open"} className="w-32"><option value="open">Open</option><option value="won">Won</option><option value="lost">Lost</option><option value="nurture">Nurture</option><option value="all">All</option></Select>
         <Button type="submit" variant="outline">Apply</Button>
         {Object.keys(sp).length ? <Link href="/leads" className="text-xs text-fg-3 hover:text-fg ml-1">Clear</Link> : null}
       </form>
-      <div className="flex flex-wrap gap-1.5 mb-3 text-xs">
-        <span className="text-fg-3 mr-1">Saved views:</span>
-        {[{ label: "Call now", q: { due: "now", status: "open" } }, { label: "Untouched", q: { untouched: "1", status: "open" } }, { label: "Offers out", q: { stage: "offer_sent", status: "open" } }, { label: "Messy deals", q: { issue: "dirty_title", status: "open" } }, { label: "Mine", q: { assigned: session.profileId, status: "open" } }].map((v) => (
-          <Link key={v.label} href={`/leads?${new URLSearchParams(Object.entries(v.q).filter((e): e is [string, string] => typeof e[1] === "string")).toString()}`} className="rounded-full border border-border bg-surface px-2.5 py-1 hover:bg-surface-2">{v.label}</Link>
-        ))}
-      </div>
+      <SavedViews builtIn={builtInViews} views={views} current={currentFilters} sort={sp.sort ? { id: sp.sort, desc: sp.dir === "desc" } : null} canShare={session.role === "admin" || session.role === "acquisitions"} />
+      <BulkSelectProvider key={JSON.stringify(filters)} ids={data.rows.map((r) => r.id)} filters={filters}>
+      {canBulk ? <BulkBar team={team.map((p) => ({ id: p.id, name: p.fullName }))} tags={tagList.filter((t) => t.kind !== "issue" && t.kind !== "buyer").map((t) => ({ id: t.id, name: t.name }))} campaigns={campaignList.filter((c) => c.status === "active").map((c) => ({ id: c.id, name: c.name }))} canEnroll={canEnroll} /> : null}
       {data.rows.length === 0 ? <EmptyState title="No leads match" description={Number(sp.page ?? 1) > 1 ? "This page is past the end of the list. Go back to the first page." : "Try a different filter or add a lead."} action={<LinkButton href="/leads/new" variant="primary">New lead</LinkButton>} /> : (
         <div className="rounded-lg border border-border bg-surface overflow-hidden">
           <Table>
-            <THead><tr>{COLUMNS.map((c) => (
+            <THead><tr>{canBulk ? <TH className="w-8 !pr-0"><HeaderCheckbox /></TH> : null}{visibleColumns.map((c) => (
               <TH key={c.key} right={c.right}>
                 {c.sort ? <Link href={link({ sort: c.sort, dir: sp.sort === c.sort && sp.dir !== "desc" ? "desc" : "asc", page: undefined })} className={cn("inline-flex items-center gap-1 hover:text-fg", sp.sort === c.sort && "text-fg")}>{c.label}<ArrowUpDown className="h-3 w-3" /></Link> : c.label}
               </TH>
@@ -73,22 +84,23 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                 const messy = Number((r.dealIssues as any)?.messyScore ?? 0);
                 return (
                   <ClickableRow key={r.id} href={`/leads/${r.id}`}>
-                    <TD>
+                    {canBulk ? <TD data-row-ignore className="w-8 !pr-0"><RowCheckbox id={r.id} label={r.address} /></TD> : null}
+                    {visible("address") ? <TD>
                       <Link href={`/leads/${r.id}`} className="font-medium hover:underline">{r.address}</Link>
                       <div className="text-xs text-fg-3">{r.city}, {r.state} {r.postalCode}{messy ? ` · ${messy} issue${messy > 1 ? "s" : ""}` : ""}</div>
-                    </TD>
-                    <TD>
+                    </TD> : null}
+                    {visible("contact") ? <TD>
                       <div>{fullName({ firstName: r.contactFirst, lastName: r.contactLast }) || <span className="text-fg-3">No contact</span>}</div>
                       <div className="text-xs text-fg-3">{(r.contactPhones as any[])?.[0]?.number ?? ""}{r.smsConsent === "opted_out" ? " · opted out" : ""}</div>
-                    </TD>
-                    <TD><StageBadge name={r.stageName} color={r.stageColor} /></TD>
-                    <TD><Badge tone={due.tone === "bad" ? "bad" : due.tone === "warn" ? "warn" : due.tone === "good" ? "good" : "neutral"}>{due.text}</Badge></TD>
-                    <TD right>{r.contactAttempts}</TD>
-                    <TD right>{money(r.askingPrice)}</TD>
-                    <TD right>{r.motivationScore ?? ""}</TD>
-                    <TD>{r.source ?? ""}</TD>
-                    <TD>{r.assignedName ?? <span className="text-fg-3">Unassigned</span>}</TD>
-                    <TD className="text-fg-3">{relative(r.createdAt)}</TD>
+                    </TD> : null}
+                    {visible("stage") ? <TD><StageBadge name={r.stageName} color={r.stageColor} /></TD> : null}
+                    {visible("followUp") ? <TD><Badge tone={due.tone === "bad" ? "bad" : due.tone === "warn" ? "warn" : due.tone === "good" ? "good" : "neutral"}>{due.text}</Badge></TD> : null}
+                    {visible("attempts") ? <TD right>{r.contactAttempts}</TD> : null}
+                    {visible("asking") ? <TD right>{money(r.askingPrice)}</TD> : null}
+                    {visible("motivation") ? <TD right>{r.motivationScore ?? ""}</TD> : null}
+                    {visible("source") ? <TD>{r.source ?? ""}</TD> : null}
+                    {visible("assigned") ? <TD>{r.assignedName ?? <span className="text-fg-3">Unassigned</span>}</TD> : null}
+                    {visible("created") ? <TD className="text-fg-3">{relative(r.createdAt)}</TD> : null}
                   </ClickableRow>
                 );
               })}
@@ -105,6 +117,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           ) : null}
         </div>
       )}
+      </BulkSelectProvider>
     </>
   );
 }

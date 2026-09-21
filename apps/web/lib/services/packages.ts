@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { dealPackages, dealAnalyses, properties, orgs, propertyReports, comps, rehabLineItems } from "@dealcalc/db";
+import { dealPackages, dealSubmissions, dealAnalyses, properties, orgs, propertyReports, comps, rehabLineItems } from "@dealcalc/db";
 import { getDb } from "../db";
 import type { PackageData } from "../pdf/package-pdf";
 import type { DealOutputs } from "../deal-run";
@@ -16,7 +16,11 @@ export const SECTION_LABELS: Record<keyof typeof DEFAULT_SECTIONS, string> = {
 export async function packageData(pkgId: string, opts: { byToken?: boolean } = {}): Promise<{ pkg: typeof dealPackages.$inferSelect; data: PackageData; orgId: string; expired: boolean } | null> {
   if (opts.byToken ? !/^[A-Za-z0-9_-]{16,64}$/.test(pkgId) : !isUuid(pkgId)) return null;
   const db = await getDb();
-  const pkg = await db.query.dealPackages.findFirst({ where: opts.byToken ? eq(dealPackages.shareToken, pkgId) : eq(dealPackages.id, pkgId) });
+  let pkg = await db.query.dealPackages.findFirst({ where: opts.byToken ? eq(dealPackages.shareToken, pkgId) : eq(dealPackages.id, pkgId) });
+  if (!pkg && opts.byToken) {
+    const submission = await db.query.dealSubmissions.findFirst({ where: eq(dealSubmissions.token, pkgId) });
+    if (submission?.packageId) pkg = await db.query.dealPackages.findFirst({ where: and(eq(dealPackages.id, submission.packageId), eq(dealPackages.orgId, submission.orgId)) });
+  }
   if (!pkg) return null;
   const expired = pkg.expiresAt != null && pkg.expiresAt < new Date();
   // Expiry closes the public link only. The owner can still open, extend, or re-enable the package.

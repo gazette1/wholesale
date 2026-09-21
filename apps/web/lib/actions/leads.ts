@@ -10,9 +10,12 @@ import { requireSession, requireCan, can } from "../auth";
 import { audit } from "../audit";
 import { sendToLead, ConsentError } from "../services/messaging";
 import { enrichProperty } from "../services/enrichment";
+import { autoEnrichNewLead, checkEnrichmentBudget, estimatedReportCostCents } from "../services/enrichment-budget";
 import { emitEvent } from "../services/integrations";
+import { rescoreLead } from "../services/lead-scoring";
+import { markOfferAccepted } from "../services/alerts";
 import { toNumber, toOptionalNumber } from "../utils";
-import { friendlyError, isUuid, moneyField, numberField, textField, MAX_MONEY } from "../safe";
+import { friendlyError, isUuid, moneyField, numberField, textField, dateOnlyField, MAX_MONEY } from "../safe";
 import { leadQuickView, type LeadQuickView } from "../data/leads";
 
 export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error: string };
@@ -115,13 +118,13 @@ export async function createLead(_prev: ActionResult | null, form: FormData): Pr
       askingPrice: d.askingPrice != null ? String(d.askingPrice) : null, sellerUrgency: d.sellerUrgency, nextFollowUpAt: new Date(),
     }).returning();
     await db.insert(activities).values({ orgId: session.orgId, leadId: lead!.id, actorId: session.profileId, type: "system", payload: { text: "Lead created" } });
-    if (d.notes) { await db.insert(activities).values({ orgId: session.orgId, leadId: lead!.id, actorId: session.profileId, type: "note", payload: { text: d.notes } }); await suggestIssuesFromText(session.orgId, lead!.id, d.notes); }
+    if (d.notes) { await db.insert(activities).values({ orgId: session.orgId, leadId: lead!.id, actorId: session.profileId, type: "note", payload: { text: d.notes } }); await suggestIssuesFromText(session.orgId, lead!.id, d.notes); await rescoreLead(session.orgId, lead!.id); }
     await db.insert(tasks).values({ orgId: session.orgId, leadId: lead!.id, assignedTo: d.assignedTo || session.profileId, title: "First call", kind: "call", dueAt: new Date() });
     await audit(session, { entityType: "lead", entityId: lead!.id, action: "create", after: { propertyId: property!.id, contactId: contact!.id } });
     await emitEvent(session.orgId, "lead.created", { leadId: lead!.id, propertyId: property!.id, via: "app", externalId: null, address: { line1: d.addressLine1, line2: d.addressLine2 ?? null, city: d.city, state: d.state, postalCode: d.postalCode }, contact: { id: contact!.id, firstName: d.firstName, lastName: d.lastName ?? null, phone: d.phone ?? null, email: d.email || null }, askingPrice: d.askingPrice, urgency: d.sellerUrgency, source: null, sourceId: d.sourceId || null, stage: { key: stage.key, name: stage.name } });
     if (d.enrich) {
       try { await enrichProperty(session.orgId, property!.id, session.profileId); } catch { /* report page shows the failure */ }
-    }
+    } else await autoEnrichNewLead(session.orgId, property!.id, session.profileId);
     revalidatePath("/leads"); revalidatePath("/pipeline"); revalidatePath("/dashboard");
     return { ok: true, id: lead!.id };
   } catch (err) {
@@ -232,6 +235,7 @@ export async function addActivity(leadId: string, form: FormData): Promise<Actio
     }
     // Suggest deal issues from the note through the judgment provider; only stored as suggestions.
     await suggestIssuesFromText(session.orgId, leadId, text);
+    await rescoreLead(session.orgId, leadId);
     const next = parseLocalDateTime(String(form.get("nextFollowUpAt") ?? ""), form.get("tzOffset") as string | null);
     if (next) await db.update(leads).set({ nextFollowUpAt: next }).where(and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)));
     revalidatePath(`/leads/${leadId}`); revalidatePath("/dashboard");
@@ -365,6 +369,8 @@ export async function createOffer(leadId: string, form: FormData): Promise<Actio
     const db = await getDb();
     const amount = toNumber(form.get("amount"));
     if (amount <= 0) return { ok: false, error: "Offer amount must be positive." };
+    const expiresAt = dateOnlyField(form.get("expiresAt"));
+    if (!expiresAt.ok) return { ok: false, error: expiresAt.error };
     const owned = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), eq(leads.orgId, session.orgId)) });
     if (!owned) return { ok: false, error: "Lead not found." };
     const statusRaw = String(form.get("status") ?? "sent");
@@ -372,7 +378,7 @@ export async function createOffer(leadId: string, form: FormData): Promise<Actio
     const analysisIdRaw = String(form.get("analysisId") ?? "") || null;
     const linked = analysisIdRaw ? await db.query.dealAnalyses.findFirst({ where: and(eq(dealAnalyses.id, analysisIdRaw), eq(dealAnalyses.orgId, session.orgId), eq(dealAnalyses.propertyId, owned.propertyId)) }) : null;
     if (analysisIdRaw && !linked) return { ok: false, error: "That analysis does not belong to this lead." };
-    const [offer] = await db.insert(offers).values({ orgId: session.orgId, leadId, analysisId: linked?.id ?? null, amount: String(amount), type: (String(form.get("type") || "cash")) as any, status, sentAt: status === "sent" ? new Date() : null, sentVia: String(form.get("sentVia") ?? "") || null, notes: String(form.get("notes") ?? "") || null, createdBy: session.profileId }).returning();
+    const [offer] = await db.insert(offers).values({ orgId: session.orgId, leadId, analysisId: linked?.id ?? null, amount: String(amount), type: (String(form.get("type") || "cash")) as any, status, expiresAt: expiresAt.value, acceptedAt: String(status) === "accepted" ? new Date() : null, sentAt: status === "sent" ? new Date() : null, sentVia: String(form.get("sentVia") ?? "") || null, notes: String(form.get("notes") ?? "") || null, createdBy: session.profileId }).returning();
     await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: session.profileId, type: "offer", payload: { amount, status, offerId: offer!.id } });
     if (status === "sent") {
       const stage = await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.orgId, session.orgId), eq(pipelineStages.key, "offer_sent")) });
@@ -400,11 +406,13 @@ export async function updateOfferStatus(offerId: string, leadId: string, status:
   if (!["sent", "accepted", "rejected", "countered", "expired"].includes(status)) return { ok: false, error: "Unknown offer status." };
   if (counterAmount != null && !(Number.isFinite(counterAmount) && counterAmount > 0 && counterAmount <= MAX_MONEY)) return { ok: false, error: "Counter amount must be a positive dollar amount." };
   if (status === "countered" && counterAmount == null && offer.counterAmount == null) return { ok: false, error: "Enter the amount the seller countered with." };
-  await db.update(offers).set({ status, sentAt: status === "sent" ? offer.sentAt ?? new Date() : offer.sentAt, counterAmount: counterAmount != null ? String(counterAmount) : offer.counterAmount }).where(and(eq(offers.id, offerId), eq(offers.orgId, session.orgId)));
+  await db.update(offers).set({ status, sentAt: status === "sent" ? offer.sentAt ?? new Date() : offer.sentAt, acceptedAt: status === "accepted" ? offer.acceptedAt ?? new Date() : offer.acceptedAt, counterAmount: counterAmount != null ? String(counterAmount) : offer.counterAmount }).where(and(eq(offers.id, offerId), eq(offers.orgId, session.orgId)));
   await db.insert(activities).values({ orgId: session.orgId, leadId, actorId: session.profileId, type: "offer", payload: { offerId, status, counterAmount } });
   await audit(session, { entityType: "offer", entityId: offerId, action: "status", before: { status: offer.status }, after: { status, counterAmount } });
   await emitEvent(session.orgId, "offer.status_changed", { offerId, leadId, amount: Number(offer.amount), from: offer.status, to: status, counterAmount: counterAmount ?? null });
   if (status === "accepted") {
+    await markOfferAccepted(session.orgId, offerId);
+    revalidatePath("/alerts");
     const stage = await db.query.pipelineStages.findFirst({ where: and(eq(pipelineStages.orgId, session.orgId), eq(pipelineStages.key, "under_contract")) });
     if (stage) await moveLeadStage(leadId, stage.id);
   }
@@ -421,16 +429,28 @@ export async function updateOfferStatus(offerId: string, leadId: string, status:
   return { ok: true };
 }
 
-export async function runEnrichment(propertyId: string, leadId?: string): Promise<ActionResult> {
+/**
+ * Manual "pull report" / "refresh report" button. Runs the same budget check as an automatic report, so a manual
+ * pull cannot quietly blow through the monthly budget or the per property cap. An admin may pass override to run
+ * anyway; anyone else who hits a refused budget just sees the reason.
+ */
+export async function runEnrichment(propertyId: string, leadId?: string, overrideBudget?: boolean): Promise<ActionResult> {
   const session = await requireSession();
   try {
     requireCan(session, "lead:write");
+    if (!isUuid(propertyId)) return { ok: false, error: "Property not found." };
+    const check = await checkEnrichmentBudget(session.orgId, propertyId, estimatedReportCostCents());
+    if (!check.allowed) {
+      if (!overrideBudget) return { ok: false, error: check.reason };
+      if (session.role !== "admin") return { ok: false, error: `Your role (${session.role}) cannot override the report budget. ${check.reason}` };
+    }
     const { report, compCount } = await enrichProperty(session.orgId, propertyId, session.profileId);
     if (leadId) revalidatePath(`/leads/${leadId}`);
     revalidatePath(`/properties/${propertyId}/report`);
-    return report.status === "failed" ? { ok: false, error: report.error ?? "Provider failed." } : { ok: true, message: `Report from ${report.provider}, ${compCount} comps` };
+    if (report.status === "failed") return { ok: false, error: report.error ?? "Provider failed." };
+    return { ok: true, message: `Report from ${report.provider}, ${compCount} comps${!check.allowed ? " (budget override)" : ""}` };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Enrichment failed." };
+    return { ok: false, error: friendlyError(err, "The property report could not be fetched.") };
   }
 }
 

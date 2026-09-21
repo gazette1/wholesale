@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requireSession, can } from "@/lib/auth";
 import { listBuyers } from "@/lib/data/buyers";
+import { listSavedViews, VIEW_FILTER_KEYS } from "@/lib/data/saved-views";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { SavedViews } from "../leads/saved-views";
 import { money, percent, relative, fullName } from "@/lib/utils";
 import { Plus, Building2 } from "lucide-react";
 
@@ -14,7 +16,8 @@ export const metadata = { title: "Buyers" };
 export default async function BuyersPage({ searchParams }: { searchParams: Promise<{ q?: string; state?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const rows = await listBuyers(session.orgId, sp.q, sp.state);
+  const [rows, views] = await Promise.all([listBuyers(session.orgId, sp.q, sp.state), listSavedViews(session.orgId, session.profileId, "buyers")]);
+  const currentFilters = Object.fromEntries(VIEW_FILTER_KEYS.buyers.map((k) => [k, (sp as Record<string, string | undefined>)[k]]).filter((e): e is [string, string] => typeof e[1] === "string" && e[1] !== ""));
   return (
     <>
       <PageHeader title="Buyers" description={`${rows.length} ${rows.length === 1 ? "investor" : "investors"}${sp.q || sp.state ? " match the filter" : " with a buy box on file"}`} actions={can(session, "buyer:write") ? <LinkButton href="/buyers/new" variant="primary"><Plus className="h-4 w-4" />New buyer</LinkButton> : null} />
@@ -24,6 +27,7 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
         {sp.q || sp.state ? <Link href="/buyers" className="self-center text-xs text-brand hover:underline">Clear</Link> : null}
         <Button type="submit" variant="outline">Filter</Button>
       </form>
+      <SavedViews builtIn={[]} views={views} current={currentFilters} sort={null} canShare={session.role === "admin" || session.role === "acquisitions"} entity="buyers" />
       {rows.length === 0 ? (sp.q || sp.state ? <EmptyState icon={Building2} title="No buyers match" description="Try a different name or state, or clear the filter." /> : <EmptyState icon={Building2} title="No buyers yet" description="Add the investors you sell to and their buy box, then match deals against them." />) : (
         <div className="rounded-lg border border-border bg-surface overflow-x-auto">
           <Table>

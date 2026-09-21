@@ -16,6 +16,9 @@ export type LeadFilters = {
   created?: "today" | "week" | "month";
   /** "sent" keeps only leads that have an offer awaiting a seller response. */
   offer?: string;
+  /** Explicit created date bounds, "YYYY-MM-DD". Takes the same field as `created` when both are set, so a report link's range wins over a stale preset. */
+  createdFrom?: string;
+  createdTo?: string;
 };
 
 export async function listStages(orgId: string) {
@@ -79,6 +82,12 @@ export async function listLeads(orgId: string, f: LeadFilters = {}) {
   if (f.created === "today") where.push(gte(leads.createdAt, day.start));
   if (f.created === "week") where.push(gte(leads.createdAt, new Date(now.getTime() - 7 * 86_400_000)));
   if (f.created === "month") where.push(gte(leads.createdAt, new Date(now.getTime() - 30 * 86_400_000)));
+  // Noon UTC on the typed day lands on that day in every US time zone; appDayBounds then gives its real start and end there.
+  const dateOnly = (raw: string | undefined) => (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? appDayBounds(new Date(`${raw}T12:00:00Z`)) : null);
+  const createdFrom = dateOnly(f.createdFrom);
+  const createdTo = dateOnly(f.createdTo);
+  if (createdFrom) where.push(gte(leads.createdAt, createdFrom.start));
+  if (createdTo) where.push(lte(leads.createdAt, createdTo.end));
   if (f.offer === "sent") where.push(inArray(leads.id, db.select({ id: offers.leadId }).from(offers).where(and(eq(offers.orgId, orgId), eq(offers.status, "sent")))));
   if (f.issue) where.push(sql`coalesce((${leads.dealIssues} -> ${f.issue} ->> 'flagged')::boolean, false)`);
   if (f.tag) {
@@ -255,7 +264,7 @@ export async function getLead(orgId: string, id: string) {
     db.select().from(messages).where(eq(messages.leadId, id)).orderBy(asc(messages.createdAt)),
     db.select().from(dealAnalyses).where(and(eq(dealAnalyses.propertyId, lead.propertyId), eq(dealAnalyses.orgId, orgId), isNull(dealAnalyses.trashedAt))).orderBy(desc(dealAnalyses.version)),
     db.query.propertyReports.findFirst({ where: eq(propertyReports.propertyId, lead.propertyId), orderBy: desc(propertyReports.fetchedAt) }),
-    db.select().from(documents).where(or(eq(documents.leadId, id), eq(documents.propertyId, lead.propertyId))).orderBy(desc(documents.createdAt)),
+    db.select().from(documents).where(and(eq(documents.orgId, orgId), or(eq(documents.leadId, id), eq(documents.propertyId, lead.propertyId)))).orderBy(desc(documents.createdAt)),
     db.select({ e: campaignEnrollments, name: campaigns.name }).from(campaignEnrollments).innerJoin(campaigns, eq(campaignEnrollments.campaignId, campaigns.id)).where(eq(campaignEnrollments.leadId, id)),
   ]);
   return { lead, property: property!, stage: stage!, source, assigned, primaryContact, contacts: contactLinks, tags: tagRows, activities: activityRows, tasks: taskRows, offers: offerRows, messages: messageRows, analyses: analysisRows, report, documents: docRows, enrollments };

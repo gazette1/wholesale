@@ -1,14 +1,19 @@
 "use server";
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
-import { buyers, buyerCriteria, buyerPurchases, dealSubmissions, dealAnalyses, dealPackages, activities } from "@dealcalc/db";
-import { judgmentProvider, inferBuyerCriteria, normalizePhone } from "@dealcalc/integrations";
+import { buyers, buyerCriteria, buyerPurchases, dealSubmissions, dealAnalyses, dealPackages, properties, buyerMatchModels, activities } from "@dealcalc/db";
+import { judgmentProvider, inferBuyerCriteria, normalizePhone, emailProvider } from "@dealcalc/integrations";
+import { matchedCriteria, weightedScore, trainMatchWeights, MIN_TRAINING_SAMPLES } from "@dealcalc/engine";
 import { getDb } from "../db";
 import { requireSession, requireCan } from "../auth";
 import { audit } from "../audit";
 import { emitEvent } from "../services/integrations";
 import { friendlyError, isEmail, isUuid, moneyField, numberField, textField, dateOnlyField } from "../safe";
+import { matchBuyers } from "../data/analyses";
+import { criteriaFromRow, dealFromOutputs, getActiveWeights, trainingRecordsForOrg } from "../data/match-model";
+import type { DealOutputs } from "../deal-run";
 import type { ActionResult } from "./leads";
 
 function list(v: FormDataEntryValue | null, maxItems = 60, maxLen = 60): string[] {
@@ -254,6 +259,92 @@ export async function updateSubmission(submissionId: string, form: FormData): Pr
     return { ok: true, message: "Updated" };
   } catch (err) {
     return { ok: false, error: friendlyError(err, "Could not update the response.") };
+  }
+}
+
+/** Recomputes the org's per criterion weights from every submission on file and its response. Below the
+ * minimum sample size, trainMatchWeights hands back the unchanged defaults and says so; this still saves
+ * that row, so the match page can show plainly that defaults are in use and how many submissions exist. */
+export async function retrainMatchModel(): Promise<ActionResult> {
+  const session = await requireSession();
+  try {
+    requireCan(session, "buyer:write");
+    const records = await trainingRecordsForOrg(session.orgId);
+    const result = trainMatchWeights(records);
+    const db = await getDb();
+    const existing = await db.query.buyerMatchModels.findFirst({ where: eq(buyerMatchModels.orgId, session.orgId) });
+    if (existing) await db.update(buyerMatchModels).set({ weights: result.weights, explanations: result.explanations, sampleSize: result.sampleSize, trainedAt: new Date() }).where(eq(buyerMatchModels.id, existing.id));
+    else await db.insert(buyerMatchModels).values({ orgId: session.orgId, weights: result.weights, explanations: result.explanations, sampleSize: result.sampleSize, trainedAt: new Date() });
+    await audit(session, { entityType: "buyer_match_model", entityId: session.orgId, action: "update", after: { sampleSize: result.sampleSize, usedDefaults: result.usedDefaults } });
+    return { ok: true, message: result.usedDefaults ? `Not enough data yet (${result.sampleSize} of ${MIN_TRAINING_SAMPLES} submissions needed). The default weights are in use.` : `Trained on ${result.sampleSize} submissions. The learned weights are in use.` };
+  } catch (err) {
+    return { ok: false, error: friendlyError(err, "Could not retrain the match model.") };
+  }
+}
+
+/**
+ * Emails the deal package to every buyer matched to this analysis whose weighted score clears the
+ * threshold the user picked, using the org's active model (learned or default, see getActiveWeights).
+ * Each buyer gets its own deal_submissions row and its own tracked token, never a shared link, so an
+ * open can be attributed to one buyer. A buyer already sent this analysis, without an email on file, or
+ * inactive is skipped and counted with its reason. The share link never carries price data; the page it
+ * points to is rendered by the existing buyer safe package path (packageData), unchanged here.
+ */
+export async function sendToAllMatched(analysisId: string, form: FormData): Promise<ActionResult> {
+  const session = await requireSession();
+  try {
+    requireCan(session, "buyer:write");
+    if (!isUuid(analysisId)) return { ok: false, error: "Analysis not found." };
+    const db = await getDb();
+    const analysis = await db.query.dealAnalyses.findFirst({ where: and(eq(dealAnalyses.id, analysisId), eq(dealAnalyses.orgId, session.orgId)) });
+    if (!analysis) return { ok: false, error: "Analysis not found." };
+    const property = await db.query.properties.findFirst({ where: eq(properties.id, analysis.propertyId) });
+    if (!property) return { ok: false, error: "Property not found." };
+    const threshold = numberField(form.get("threshold"), "Score threshold", 0, 100); if (!threshold.ok) return threshold;
+    const minScore = threshold.value ?? 70;
+    const packageRaw = String(form.get("packageId") ?? "");
+    const pkg = isUuid(packageRaw) ? await db.query.dealPackages.findFirst({ where: and(eq(dealPackages.id, packageRaw), eq(dealPackages.orgId, session.orgId), eq(dealPackages.analysisId, analysisId)) }) : null;
+    if (!pkg) return { ok: false, error: "Create a deal package for this analysis first, then send." };
+
+    const deal = dealFromOutputs(analysis.outputs as unknown as DealOutputs, analysis.arv, { state: property.state, county: property.county, postalCode: property.postalCode, propertyType: property.propertyType, condition: property.condition, occupancy: property.occupancy });
+    const model = await getActiveWeights(session.orgId);
+    const matches = await matchBuyers(session.orgId, deal);
+    const eligible = matches.filter((m) => weightedScore(matchedCriteria(deal, criteriaFromRow(m.criteria)), model.weights) >= minScore);
+
+    const already = await db.select({ buyerId: dealSubmissions.buyerId }).from(dealSubmissions).where(and(eq(dealSubmissions.orgId, session.orgId), eq(dealSubmissions.analysisId, analysisId)));
+    const alreadySent = new Set(already.map((r) => r.buyerId));
+
+    let sent = 0;
+    const skipped: Record<string, number> = {};
+    const skip = (reason: string) => { skipped[reason] = (skipped[reason] ?? 0) + 1; };
+    const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+
+    for (const m of eligible) {
+      const buyer = m.buyer;
+      if (alreadySent.has(buyer.id)) { skip("already sent"); continue; }
+      if (!buyer.active) { skip("buyer inactive"); continue; }
+      const email = buyer.emails.find((e) => e.isPrimary)?.address ?? buyer.emails[0]?.address;
+      if (!email) { skip("no email on file"); continue; }
+      const token = randomBytes(18).toString("base64url");
+      try {
+        // Address and a link only. Never the contract price, spread, MAO, or assignment fee.
+        await emailProvider().sendEmail({ to: email, subject: `Deal package: ${property.addressLine1}`, text: `A new deal is available for review: ${property.addressLine1}, ${property.city}, ${property.state}.\n\nView the package: ${appUrl}/share/${token}` });
+      } catch {
+        skip("send failed");
+        continue;
+      }
+      await db.insert(dealSubmissions).values({ orgId: session.orgId, analysisId, buyerId: buyer.id, packageId: pkg.id, sentAt: new Date(), sentVia: "email", response: "none", token });
+      await db.update(buyers).set({ lastContactedAt: new Date() }).where(and(eq(buyers.id, buyer.id), eq(buyers.orgId, session.orgId)));
+      alreadySent.add(buyer.id);
+      sent++;
+    }
+    if (analysis.leadId && sent > 0) await db.insert(activities).values({ orgId: session.orgId, leadId: analysis.leadId, actorId: session.profileId, type: "system", payload: { text: `Deal package sent to ${sent} matched buyer${sent === 1 ? "" : "s"}`, analysisId } });
+    revalidatePath(`/buyers/match/${analysisId}`); revalidatePath("/buyers");
+    const skippedCount = Object.values(skipped).reduce((a, b) => a + b, 0);
+    const skippedText = Object.entries(skipped).map(([reason, n]) => `${n} ${reason}`).join(", ");
+    return { ok: true, message: `Sent ${sent}${skippedCount > 0 ? `, skipped ${skippedCount} (${skippedText})` : ""}.` };
+  } catch (err) {
+    return { ok: false, error: friendlyError(err, "Could not send the deal package.") };
   }
 }
 

@@ -6,7 +6,7 @@ import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { money, dateTime } from "@/lib/utils";
+import { money, dateTime, shortDate } from "@/lib/utils";
 
 const TONE: Record<string, "neutral" | "info" | "good" | "bad" | "warn"> = { draft: "neutral", sent: "info", countered: "warn", accepted: "good", rejected: "bad", expired: "neutral" };
 
@@ -20,7 +20,7 @@ export function OffersTab({ detail, canWrite }: { detail: LeadDetail; canWrite: 
           <CardBody className="p-0 overflow-x-auto">
             {detail.offers.length === 0 ? <p className="p-4 text-[13px] text-fg-3">No offers yet.</p> : (
               <Table>
-                <THead><tr><TH right>Amount</TH><TH>Type</TH><TH>Status</TH><TH>Sent</TH><TH right>Counter</TH><TH>Notes</TH><TH></TH></tr></THead>
+                <THead><tr><TH right>Amount</TH><TH>Type</TH><TH>Status</TH><TH>Sent</TH><TH>Expires</TH><TH right>Counter</TH><TH>Notes</TH><TH></TH></tr></THead>
                 <TBody>
                   {detail.offers.map((o) => (
                     <TR key={o.id}>
@@ -28,6 +28,7 @@ export function OffersTab({ detail, canWrite }: { detail: LeadDetail; canWrite: 
                       <TD>{o.type}</TD>
                       <TD><Badge tone={TONE[o.status] ?? "neutral"}>{o.status}</Badge></TD>
                       <TD className="text-fg-3">{o.sentAt ? `${dateTime(o.sentAt)}${o.sentVia ? ` via ${o.sentVia}` : ""}` : ""}</TD>
+                      <TD className="text-fg-3">{o.expiresAt ? shortDate(o.expiresAt) : ""}</TD>
                       <TD right>{money(o.counterAmount)}</TD>
                       <TD className="text-fg-3 max-w-[220px] truncate">{o.notes}</TD>
                       <TD>
@@ -53,6 +54,7 @@ export function OffersTab({ detail, canWrite }: { detail: LeadDetail; canWrite: 
                 <Field label="Status"><Select name="status" defaultValue="sent"><option value="sent">Sent</option><option value="draft">Draft</option></Select></Field>
               </div>
               <Field label="Sent via"><Select name="sentVia" defaultValue="phone"><option value="phone">Phone</option><option value="text">Text</option><option value="email">Email</option><option value="in_person">In person</option><option value="docusign">DocuSign</option></Select></Field>
+              <Field label="Expires" hint="Leave blank if this offer has no deadline"><Input name="expiresAt" type="date" /></Field>
               <Field label="Notes"><Textarea name="notes" maxLength={2000} placeholder="Terms, closing date, contingencies" /></Field>
             </ActionForm>
           ) : <p className="text-xs text-fg-3">Your role cannot record offers.</p>}

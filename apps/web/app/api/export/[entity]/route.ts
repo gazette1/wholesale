@@ -4,6 +4,7 @@ import { leads, properties, contacts, pipelineStages, leadSources, profiles, buy
 import { recordsToCsv, LEAD_CSV_TEMPLATE_COLUMNS, BUYER_CSV_TEMPLATE_COLUMNS } from "@dealcalc/integrations";
 import { getDb } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { parseRangeKey, reportRange, speedToContact, conversionBySource, costPerContract, offersToContracts, marketAnalytics, type MarketRow } from "@/lib/data/reports";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,11 +23,12 @@ const primaryEmail = (list: { address: string; isPrimary?: boolean }[]) => (list
  * Session authenticated CSV downloads: leads.csv, buyers.csv, analyses.csv, plus the import templates
  * leads-template.csv and buyers-template.csv. Every role may export. Cells are guarded against spreadsheet formula injection.
  */
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ entity: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ entity: string }> }) {
   const session = await getSession();
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
   const { entity } = await params;
   const db = await getDb();
+  const range = reportRange(parseRangeKey(request.nextUrl.searchParams.get("range") ?? undefined));
 
   if (entity === "leads-template.csv") {
     return csvResponse("leads-template.csv", recordsToCsv(LEAD_CSV_TEMPLATE_COLUMNS, [{
@@ -84,5 +86,40 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return csvResponse(`analyses-${stamp()}.csv`, recordsToCsv(columns, records, { bom: true }));
   }
 
-  return new NextResponse("Not found. Use leads.csv, buyers.csv, or analyses.csv.", { status: 404 });
+  if (entity === "reports-speed-to-contact.csv") {
+    const rows = await speedToContact(session.orgId, range);
+    const columns = ["owner", "leads", "not_yet_contacted", "median_minutes", "average_minutes", "within_5_min", "within_60_min"];
+    const records = rows.map((r) => ({ owner: r.name, leads: r.leads, not_yet_contacted: r.notContacted, median_minutes: r.medianMinutes, average_minutes: r.averageMinutes, within_5_min: r.within5, within_60_min: r.within60 }));
+    return csvResponse(`reports-speed-to-contact-${stamp()}.csv`, recordsToCsv(columns, records, { bom: true }));
+  }
+
+  if (entity === "reports-conversion-by-source.csv") {
+    const rows = await conversionBySource(session.orgId, range);
+    const columns = ["source", "leads", "contacted", "offers_made", "contracts", "fell_out", "closed", "lead_to_contract", "cost_per_lead"];
+    const records = rows.map((r) => ({ source: r.source, leads: r.leads, contacted: r.contacted, offers_made: r.offersMade, contracts: r.contracts, fell_out: r.fellOut, closed: r.closed, lead_to_contract: r.leadToContract, cost_per_lead: r.costPerLead }));
+    return csvResponse(`reports-conversion-by-source-${stamp()}.csv`, recordsToCsv(columns, records, { bom: true }));
+  }
+
+  if (entity === "reports-cost-per-contract.csv") {
+    const { rows } = await costPerContract(session.orgId, range);
+    const columns = ["source", "leads", "cost_per_lead", "spend", "contracts", "cost_per_contract"];
+    const records = rows.map((r) => ({ source: r.source, leads: r.leads, cost_per_lead: r.costPerLead, spend: r.spend, contracts: r.contracts, cost_per_contract: r.costPerContract }));
+    return csvResponse(`reports-cost-per-contract-${stamp()}.csv`, recordsToCsv(columns, records, { bom: true }));
+  }
+
+  if (entity === "reports-offers-to-contracts.csv") {
+    const o = await offersToContracts(session.orgId, range);
+    const columns = ["made", "awaiting", "accepted", "rejected", "countered", "expired", "acceptance_rate", "avg_days_to_accept", "accepted_measured"];
+    return csvResponse(`reports-offers-to-contracts-${stamp()}.csv`, recordsToCsv(columns, [{ made: o.made, awaiting: o.awaiting, accepted: o.accepted, rejected: o.rejected, countered: o.countered, expired: o.expired, acceptance_rate: o.acceptanceRate, avg_days_to_accept: o.avgDaysToAccept, accepted_measured: o.acceptedMeasured }], { bom: true }));
+  }
+
+  if (entity === "reports-market-by-county.csv" || entity === "reports-market-by-zip.csv") {
+    const data = await marketAnalytics(session.orgId, range);
+    const marketRows: MarketRow[] = entity === "reports-market-by-county.csv" ? data.byCounty : data.byZip;
+    const columns = ["area", "leads", "contact_rate", "offers_made", "offer_acceptance_rate", "contracts", "avg_spread", "avg_assignment_fee", "median_asking_price", "small_sample"];
+    const records = marketRows.map((r) => ({ area: r.key, leads: r.leads, contact_rate: r.contactRate, offers_made: r.offersMade, offer_acceptance_rate: r.offerAcceptanceRate, contracts: r.contracts, avg_spread: r.avgSpread, avg_assignment_fee: r.avgAssignmentFee, median_asking_price: r.medianAsking, small_sample: r.lowSample ? "yes" : "no" }));
+    return csvResponse(`${entity.replace(".csv", "")}-${stamp()}.csv`, recordsToCsv(columns, records, { bom: true }));
+  }
+
+  return new NextResponse("Not found. Use leads.csv, buyers.csv, analyses.csv, or a reports-*.csv entity.", { status: 404 });
 }

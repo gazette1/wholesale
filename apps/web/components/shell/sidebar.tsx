@@ -1,16 +1,19 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Kanban, Users, Calculator, Building2, Send, FileText, CheckSquare, Settings, Menu, X, Contact } from "lucide-react";
+import { LayoutDashboard, Kanban, Users, Calculator, Building2, Send, FileText, CheckSquare, Settings, Menu, X, Contact, BarChart3, Bell, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Avatar } from "@/components/ui/badge";
+import { Avatar, Badge } from "@/components/ui/badge";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/tasks", label: "Follow ups", icon: CheckSquare },
+  { href: "/alerts", label: "Alerts", icon: Bell },
+  { href: "/review", label: "Review queue", icon: Sparkles },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/analyzer", label: "Deal Analyzer", icon: Calculator },
   { href: "/buyers", label: "Buyers", icon: Building2 },
   { href: "/campaigns", label: "Campaigns", icon: Send },
@@ -18,7 +21,7 @@ const NAV = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar({ orgName, userName, role, authMode, providerBadge }: { orgName: string; userName: string; role: string; authMode: string; providerBadge?: string }) {
+export function Sidebar({ orgName, userName, role, authMode, providerBadge, alertCount = 0 }: { orgName: string; userName: string; role: string; authMode: string; providerBadge?: string; alertCount?: number }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   // Escape closes the mobile menu.
@@ -35,7 +38,8 @@ export function Sidebar({ orgName, userName, role, authMode, providerBadge }: { 
         return (
           <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors", active ? "bg-black/[0.06] text-fg font-medium" : "text-fg-2 hover:bg-black/[0.04] hover:text-fg")}>
             <item.icon className={cn("h-4 w-4", active ? "text-fg" : "text-fg-3")} />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.href === "/alerts" && alertCount > 0 ? <Badge tone="bad">{alertCount > 99 ? "99+" : alertCount}</Badge> : null}
           </Link>
         );
       })}

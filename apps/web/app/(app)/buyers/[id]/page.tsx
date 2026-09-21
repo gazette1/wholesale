@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { and, desc, eq } from "drizzle-orm";
+import { documents } from "@dealcalc/db";
+import { getDb } from "@/lib/db";
 import { requireSession, can } from "@/lib/auth";
 import { getBuyer } from "@/lib/data/buyers";
 import { updateBuyer, updateCriteria, addPurchase, removePurchase, updateSubmission, deleteBuyer, setBuyerActive } from "@/lib/actions/buyers";
@@ -11,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { money, fullName, shortDate, percent } from "@/lib/utils";
 import { SuggestCriteria } from "./suggest";
+import { BuyerDocuments } from "./documents";
 import { Button } from "@/components/ui/button";
 
 export const metadata = { title: "Buyer" };
@@ -23,6 +27,8 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
   if (!detail) notFound();
   const { buyer, criteria, purchases, submissions } = detail;
   const writable = can(session, "buyer:write");
+  const db = await getDb();
+  const docs = await db.select().from(documents).where(and(eq(documents.orgId, session.orgId), eq(documents.buyerId, id))).orderBy(desc(documents.createdAt));
   return (
     <>
       <PageHeader crumbs={[{ label: "Buyers", href: "/buyers" }, { label: buyer.company ?? fullName(buyer) }]} title={<span className="flex items-center gap-2">{buyer.company ?? fullName(buyer)}{!buyer.active ? <Badge tone="neutral">Inactive</Badge> : null}</span>} description={`${fullName(buyer)}${buyer.phones[0] ? ` · ${buyer.phones[0].number}` : ""}${buyer.emails[0] ? ` · ${buyer.emails[0].address}` : ""}`}
@@ -60,12 +66,13 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
             <CardBody className="p-0 overflow-x-auto">
               {submissions.length === 0 ? <p className="p-4 text-[13px] text-fg-3">Nothing sent yet. Match a deal from an analysis.</p> : (
                 <Table>
-                  <THead><tr><TH>Property</TH><TH right>Quoted price</TH><TH>Sent</TH><TH>Response</TH><TH>Update</TH></tr></THead>
+                  <THead><tr><TH>Property</TH><TH right>Quoted price</TH><TH>Sent</TH><TH>Opened</TH><TH>Response</TH><TH>Update</TH></tr></THead>
                   <TBody>{submissions.map((s) => (
                     <TR key={s.s.id}>
                       <TD><Link href={`/analyzer/${s.analysisId}`} className="hover:underline">{s.address}, {s.city}</Link></TD>
                       <TD right>{money(s.price)}</TD>
                       <TD className="text-fg-3">{s.s.sentAt ? `${shortDate(s.s.sentAt)} via ${s.s.sentVia}` : ""}</TD>
+                      <TD className="text-fg-3">{s.s.token ? (s.s.openCount > 0 ? `${shortDate(s.s.firstOpenedAt)} · ${s.s.openCount} view${s.s.openCount === 1 ? "" : "s"}` : "Not opened yet") : "Not tracked"}</TD>
                       <TD><Badge tone={s.s.response === "offer" ? "good" : s.s.response === "interested" ? "info" : s.s.response === "pass" ? "bad" : "neutral"}>{RESPONSE_LABEL[s.s.response] ?? s.s.response}{s.s.response === "offer" && s.s.responseAmount ? ` ${money(s.s.responseAmount)}` : ""}</Badge></TD>
                       <TD>{writable ? (
                         <ActionForm action={updateSubmission.bind(null, s.s.id)} submitLabel="Save" size="sm" variant="ghost" inline className="flex items-center gap-1">
@@ -109,6 +116,9 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
             </CardBody>
           </Card>
         </div>
+      </div>
+      <div className="mt-4">
+        <BuyerDocuments buyerId={id} docs={docs} canWrite={writable} sessionProfileId={session.profileId} isAdmin={session.role === "admin"} />
       </div>
     </>
   );

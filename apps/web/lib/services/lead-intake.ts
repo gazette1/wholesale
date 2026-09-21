@@ -2,6 +2,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { leads, properties, contacts, propertyContacts, pipelineStages, leadSources, activities, tasks } from "@dealcalc/db";
 import { normalizeAddressKey, type LeadPayload } from "@dealcalc/integrations";
 import { getDb } from "../db";
+import { autoEnrichNewLead } from "./enrichment-budget";
 
 /**
  * Shared lead intake for the REST API and the CSV importer. Mirrors what the createLead server action writes
@@ -148,6 +149,8 @@ export async function createLeadFromPayload(orgId: string, payload: LeadPayload,
   await db.insert(activities).values({ orgId, leadId: lead!.id, actorId: actor.profileId, type: "system", payload: { text: `Lead created by ${actor.label}`, via: actor.via, source: source.name, externalId: payload.externalId ?? null } });
   if (payload.notes) await db.insert(activities).values({ orgId, leadId: lead!.id, actorId: actor.profileId, type: "note", payload: { text: payload.notes } });
   if (actor.createTask) await db.insert(tasks).values({ orgId, leadId: lead!.id, assignedTo: actor.profileId, title: "First call", kind: "call", dueAt: new Date() });
+  // CSV imports are left out so a large file does not buy one report per row.
+  if (actor.via === "api") await autoEnrichNewLead(orgId, propertyId, actor.profileId);
 
   return {
     leadId: lead!.id, propertyId, contactId, duplicate: false,
