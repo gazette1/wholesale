@@ -24,6 +24,7 @@ The rule that decided what to build: nothing may change a number that the golden
 | Strategy on the record (Wholesale, Flip, Rental) | Deal section, list column, compare tab | Stored in `deal_analyses.strategy`. |
 | Calculation rule version saved with results | Already present as `engine_version`; now 0.2.0 | Shown in the page header and the compare tab. |
 | Autosave warning | Editor | The browser warns before leaving with unsaved edits. |
+| Annual interest rate per loan | Financing section | Decision D-11: one annual rate per lien, accrued monthly over the hold. Reproduces the workbook's cached result to the cent. The rest of the Mac financing model stays deferred. |
 
 ## Present before this pass
 

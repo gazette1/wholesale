@@ -42,7 +42,7 @@ export async function buildDefaultInputs(orgId: string, propertyId: string): Pro
     rehab: { address: property.addressLine1, lines },
     acquisitions: {
       holdMonths: 4, asIsValue: asIs, purchasePrice, arv, repairCosts: repairEstimate, assignmentFee: -10000,
-      firstLienAmount: purchasePrice, firstPointsRate: 0.03, firstInterestRate: 0, firstMonthlyInterestOnlyRate: 0.14 / 12,
+      firstLienAmount: purchasePrice, firstPointsRate: 0.03, firstInterestRate: 0, firstMonthlyInterestOnlyRate: 0, firstAnnualRate: 0.14, secondAnnualRate: 0,
       secondLienAmount: 0, secondPointsRate: 0, secondInterestRate: 0, secondMonthlyInterestOnlyRate: 0,
       miscLienAmountPaid: 0, miscPointsPaid: 0, miscInterestPaid: 0, miscMonthlyInterestOnlyPaid: 0, miscFinancingCosts: 0,
       propertyTaxRate: report?.normalized.tax.taxAmount && asIs ? Math.min(0.1, report.normalized.tax.taxAmount / asIs) : 0.022,

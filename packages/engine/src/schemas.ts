@@ -54,6 +54,8 @@ export const AcquisitionsInputSchema = z.object({
   secondPointsRate: pct("The 2nd position points", 0.15),
   secondInterestRate: pct("The 2nd position interest rate", 0.3),
   secondMonthlyInterestOnlyRate: pct("The 2nd position interest only monthly rate", 0.03),
+  firstAnnualRate: pct("The 1st position annual interest rate. Replaces the two workbook rate cells for this lien.", 0.5).nullable().optional(),
+  secondAnnualRate: pct("The 2nd position annual interest rate. Replaces the two workbook rate cells for this lien.", 0.5).nullable().optional(),
   miscLienAmountPaid: usd("Misc. position loan amount paid"),
   miscPointsPaid: usd("Misc. points paid"),
   miscInterestPaid: usd("Misc. interest paid"),

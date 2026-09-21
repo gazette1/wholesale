@@ -31,6 +31,7 @@ Each entry: ID, sheet and cell, what it computes, why it looks off, likely inten
 - Likely intent: a 14% annual hard money rate, divided by 12.
 - Question: Is 14% per year your usual hard money rate, and do you want to type the yearly rate and let the app divide by 12?
 - Default: input `firstAnnualInterestOnlyRate` = 0.14, engine divides by 12.
+- Resolved 2026-09-21 (Russ): the app takes an annual rate per lien and divides by 12. See D-11 in `docs/DECISIONS.md`. Reproduces the cached F22 to the cent.
 
 ### A-04 Repair costs typed by hand (confirmed)
 - Cell: E12 = 20,050 typed. `Rehab Estimator!I1` = 20,050 computed. Not linked.
@@ -140,6 +141,7 @@ Each entry: ID, sheet and cell, what it computes, why it looks off, likely inten
 - Likely intent: same shape as F21.
 - Question: If you took a second loan at, say, 1% per month, should the deal charge that for every month you hold?
 - Default: multiply by hold months, behind the flag.
+- Resolved 2026-09-21 (Russ): with the annual rate input the second lien accrues per hold month like the first. See D-11. The flag still governs the raw workbook cell for parity tests.
 
 ### A-22 Holding cost "Utilities" has no column on the draw sheets (new)
 - Cells: Acquisitions J22, K22 flow into total holding costs J32. The draw sheets carry gas (T), water (U), electricity (V), miscellaneous (W) but nothing for J22.

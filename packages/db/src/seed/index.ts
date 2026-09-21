@@ -64,7 +64,7 @@ const TEMPLATES = [
 
 const BASE_ACQ: Omit<AcquisitionsInput, "holdMonths" | "asIsValue" | "purchasePrice" | "arv" | "repairCosts"> = {
   assignmentFee: -10000,
-  firstLienAmount: 0, firstPointsRate: 0.03, firstInterestRate: 0, firstMonthlyInterestOnlyRate: 0.14 / 12,
+  firstLienAmount: 0, firstPointsRate: 0.03, firstInterestRate: 0, firstMonthlyInterestOnlyRate: 0, firstAnnualRate: 0.14, secondAnnualRate: 0,
   secondLienAmount: 0, secondPointsRate: 0.1, secondInterestRate: 0, secondMonthlyInterestOnlyRate: 0,
   miscLienAmountPaid: 0, miscPointsPaid: 0, miscInterestPaid: 0, miscMonthlyInterestOnlyPaid: 0, miscFinancingCosts: 0,
   propertyTaxRate: 0.022, hoaMonthly: 0, insuranceMonthly: 100, utilitiesMonthly: 0, gasMonthly: 75, waterMonthly: 40, electricityMonthly: 90, miscUtilitiesMonthly: 0,

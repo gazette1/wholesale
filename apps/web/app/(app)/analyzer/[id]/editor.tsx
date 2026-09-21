@@ -19,6 +19,20 @@ type PropertyLite = { id: string; sqft: number | null; condition: string; occupa
 type ReportLite = { avm: number | null; arv: number | null; rent: number | null; payoff: number; taxAmount: number | null } | null;
 export type Sibling = { id: string; version: number; name: string; status: string; outputs: DealOutputs | Record<string, never>; inputs: DealInput };
 
+/**
+ * Versions saved before engine 0.3.0 carry the workbook's two rate cells per lien. Show them as one annual rate.
+ * First lien: both cells are charged per hold month, so their sum times 12 is exactly equivalent.
+ * Second lien: the sheet charged its first cell once (A-21), so that part is spread over the hold to keep today's total.
+ */
+function withAnnualRates(a: DealInput["acquisitions"]): DealInput["acquisitions"] {
+  const round = (n: number) => Math.round(n * 1e6) / 1e6;
+  return {
+    ...a,
+    firstAnnualRate: a.firstAnnualRate ?? round((a.firstInterestRate + a.firstMonthlyInterestOnlyRate) * 12),
+    secondAnnualRate: a.secondAnnualRate ?? round(a.secondMonthlyInterestOnlyRate * 12 + (a.holdMonths > 0 ? (a.secondInterestRate * 12) / a.holdMonths : 0)),
+  };
+}
+
 const SECTIONS = [["deal", "Deal"], ["offers", "Offers"], ["rehab", "Rehab"], ["financing", "Financing"], ["holding", "Holding"], ["costs", "Closing costs"], ["rental", "Buy and hold"], ["loan", "Loan"]] as const;
 type SectionKey = (typeof SECTIONS)[number][0];
 
@@ -29,6 +43,7 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
   // Versions saved before the Offers and Rehab source blocks existed get property based defaults, without marking the form dirty.
   const [inputs, setInputs] = useState<DealInput>(() => ({
     ...initialInputs,
+    acquisitions: withAnnualRates(initialInputs.acquisitions),
     offers: initialInputs.offers ?? defaultOffers(property.sqft ?? 0),
     rehabPlan: initialInputs.rehabPlan ?? { source: initialInputs.acquisitions.repairCostsOverride != null ? "manual" : "checklist", perSqftRate: 30, squareFeet: property.sqft ?? 0 },
   }));
@@ -154,12 +169,10 @@ export function Editor({ analysisId, initialInputs, name: initialName, notes: in
                 <div className="grid grid-cols-2 gap-3">
                   <NumField label="First lien amount" value={acq.firstLienAmount} onChange={(v) => setAcq("firstLienAmount", v)} step={1000} min={0} />
                   <NumField label="First lien points" value={acq.firstPointsRate} onChange={(v) => setAcq("firstPointsRate", v)} pct />
-                  <NumField label="First lien interest (per hold month)" value={acq.firstInterestRate} onChange={(v) => setAcq("firstInterestRate", v)} pct hint="Workbook rule (F21): this percent of the lien is charged once for every hold month. A 12% annual rate is 1 here. Leave it at 0 if you use the interest only field instead, or interest is counted twice." />
-                  <NumField label="First lien interest only (per hold month)" value={acq.firstMonthlyInterestOnlyRate} onChange={(v) => setAcq("firstMonthlyInterestOnlyRate", v)} pct hint="Monthly rate. 14% per year is 1.1667% per month." />
+                  <NumField label="First lien interest rate (annual)" value={acq.firstAnnualRate ?? 0} onChange={(v) => setAcq("firstAnnualRate", v)} pct min={0} max={50} hint="A yearly rate, such as 14. Interest for the hold is the lien times this rate, divided by 12, times the hold months." />
                   <NumField label="Second lien amount" value={acq.secondLienAmount} onChange={(v) => setAcq("secondLienAmount", v)} step={1000} min={0} />
                   <NumField label="Second lien points" value={acq.secondPointsRate} onChange={(v) => setAcq("secondPointsRate", v)} pct />
-                  <NumField label="Second lien interest (charged once)" value={acq.secondInterestRate} onChange={(v) => setAcq("secondInterestRate", v)} pct hint="Workbook rule: this percent of the second lien is charged one time, not per month. The anomaly flag secondInterestTimesHold changes that." />
-                  <NumField label="Second lien interest only (per hold month)" value={acq.secondMonthlyInterestOnlyRate} onChange={(v) => setAcq("secondMonthlyInterestOnlyRate", v)} pct />
+                  <NumField label="Second lien interest rate (annual)" value={acq.secondAnnualRate ?? 0} onChange={(v) => setAcq("secondAnnualRate", v)} pct min={0} max={50} hint="A yearly rate. Accrues per hold month, the same way as the first lien." />
                   <NumField label="Misc lien paid" value={acq.miscLienAmountPaid} onChange={(v) => setAcq("miscLienAmountPaid", v)} step={100} />
                   <NumField label="Misc points paid" value={acq.miscPointsPaid} onChange={(v) => setAcq("miscPointsPaid", v)} step={100} />
                   <NumField label="Misc interest paid" value={acq.miscInterestPaid} onChange={(v) => setAcq("miscInterestPaid", v)} step={100} />
