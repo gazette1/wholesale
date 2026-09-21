@@ -102,6 +102,9 @@ Russ has not reviewed the diff, so keep commits readable. Commits are authored a
 
 ## 8. Production checklist, in order
 
+Hosted state on 2026-09-21 (about 15:30 EDT): today's work is committed in six commits and pushed to `mac-parity-and-integrations`, which updates PR 1. Migrations `0005` to `0008` are applied to the Supabase project `wholesale` through the Supabase MCP, as migrations `calls_and_enrichment_budget`, `rls_calls_enrichment`, `alerts_scoring_and_match_models`, `rls_alerts_scoring`. All five new tables have row level security on with a select and a write policy. The Supabase security advisor reports four warnings, all on functions from `0001` (`set_updated_at` has a mutable search_path; `current_org_id`, `current_profile`, `current_role_name` are SECURITY DEFINER and executable by `anon` and `authenticated` over `/rest/v1/rpc`); these predate today and are not fixed. The Vercel redeploy did NOT happen: the Vercel CLI on this machine is not logged in. Steps 1 and 3 below are done except the seed, which is not needed while the app runs on the demo.
+
+
 1. Section 5, then section 7.
 2. Merge PR 1 in the browser once CI is green.
 3. Supabase: confirm `DATABASE_URL` and the service role key, apply migrations `0005`, `0006`, `0007`, `0008` in order (read the two `rls` files first; they have never executed), run `pnpm --filter @dealcalc/db seed` once only if the database is empty.
