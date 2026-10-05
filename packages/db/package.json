@@ -16,7 +16,8 @@
     "seed": "tsx src/seed/run.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "embed": "tsx scripts/embed-migrations.ts"
+    "embed": "tsx scripts/embed-migrations.ts",
+    "bootstrap": "tsx src/seed/bootstrap-run.ts"
   },
   "dependencies": {
     "@dealcalc/engine": "workspace:*",

@@ -53,7 +53,7 @@ const CITIES: { city: string; zip: string; county: string }[] = [
   { city: "Rosedale", zip: "21237", county: "Baltimore" }, { city: "Pasadena", zip: "21122", county: "Anne Arundel" },
 ];
 
-const TEMPLATES = [
+export const TEMPLATES = [
   { channel: "sms" as const, name: "First touch", body: "Hi {{first_name}}, this is {{sender_name}}. I saw your note about {{property_address}}. Is it still something you are thinking about selling? Reply STOP to opt out." },
   { channel: "sms" as const, name: "Second attempt", body: "{{first_name}}, {{sender_name}} again about {{property_address}}. I can make a cash offer with no repairs and close on your timeline. Good time for a quick call?" },
   { channel: "sms" as const, name: "Offer follow up", body: "Hi {{first_name}}, checking in on the offer for {{property_address}}. Happy to walk through the numbers or adjust the closing date. {{sender_name}}" },
