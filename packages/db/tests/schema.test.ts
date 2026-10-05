@@ -55,3 +55,43 @@ describe("schema on PGlite", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("migration ledger", () => {
+  it("is idempotent and upgrades a database that predates the ledger", async () => {
+    const { createPgliteDb } = await import("../src/client");
+    const { migrate, migrationFiles, migrationSql, splitStatements } = await import("../src/migrate");
+    const { sql } = await import("drizzle-orm");
+    const fresh = createPgliteDb();
+    const first = await migrate(fresh);
+    expect(first).toEqual(migrationFiles());
+    expect(await migrate(fresh)).toEqual([]);
+
+    // Legacy shape: only 0000 applied by hand, no ledger table.
+    const legacy = createPgliteDb();
+    for (const st of splitStatements(migrationSql(migrationFiles()[0]!))) await legacy.execute(sql.raw(st));
+    const upgraded = await migrate(legacy);
+    expect(upgraded).toEqual(migrationFiles().slice(1));
+    const cols = await legacy.execute(sql.raw(`select column_name from information_schema.columns where table_name = 'deal_analyses' and column_name in ('strategy','archived_at','trashed_at')`));
+    expect(((cols as any).rows ?? cols).length).toBe(3);
+  }, 60000);
+});
+
+describe("profile email uniqueness", () => {
+  it("sets aside existing duplicates instead of failing, then rejects new ones", async () => {
+    const { createPgliteDb } = await import("../src/client");
+    const { migrationFiles, migrationSql, splitStatements } = await import("../src/migrate");
+    const { sql } = await import("drizzle-orm");
+    const d = createPgliteDb();
+    const files = migrationFiles();
+    const upTo = files.indexOf("0004_profiles_email_unique.sql");
+    for (const f of files.slice(0, upTo)) for (const st of splitStatements(migrationSql(f))) await d.execute(sql.raw(st));
+    await d.execute(sql.raw(`insert into orgs (id, name) values ('00000000-0000-0000-0000-000000000001', 'Org')`));
+    await d.execute(sql.raw(`insert into profiles (org_id, full_name, email, created_at) values ('00000000-0000-0000-0000-000000000001', 'First', 'a@x.com', now() - interval '1 day'), ('00000000-0000-0000-0000-000000000001', 'Second', 'A@x.com', now())`));
+    for (const st of splitStatements(migrationSql(files[upTo]!))) await d.execute(sql.raw(st));
+    const rows = ((await d.execute(sql.raw(`select full_name, email, active from profiles order by created_at`))) as any).rows as { full_name: string; email: string; active: boolean }[];
+    expect(rows[0]).toMatchObject({ full_name: "First", email: "a@x.com", active: true });
+    expect(rows[1]!.active).toBe(false);
+    expect(rows[1]!.email.startsWith("A@x.com.duplicate.")).toBe(true);
+    await expect(d.execute(sql.raw(`insert into profiles (org_id, full_name, email) values ('00000000-0000-0000-0000-000000000001', 'Third', 'A@X.COM')`))).rejects.toThrow();
+  }, 60000);
+});

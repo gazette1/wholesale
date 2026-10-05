@@ -95,3 +95,98 @@ export async function inferBuyerCriteria(provider: JudgmentProvider, notes: stri
   const conditionLevels = heavy > 0.5 ? [1, 2, 3] : light > 0.5 ? [3, 4, 5] : [2, 3, 4];
   return { funding: funding?.choice ?? "cash", sightUnseen: (result.answers["sight_unseen"] as ProbabilityAnswer | undefined)?.probability ?? 0, conditionLevels, provider: result.provider, confidence: funding?.confidence ?? 0 };
 }
+
+export type LeadUrgency = "none" | "low" | "medium" | "high" | "immediate";
+
+/**
+ * Every touch on a lead the score is built from. Free text (notes, messages, call outcomes) is sent to the
+ * provider; structured facts already on the lead (flagged deal issues, stated urgency, asking price versus a
+ * known value) are read directly rather than re-derived from text.
+ */
+export type LeadTouches = {
+  notes: string[];
+  inboundMessages: string[];
+  outboundMessages: string[];
+  callOutcomes: string[];
+  /** Deal issue keys currently flagged on the lead, e.g. "probate_or_inherited". */
+  flaggedIssues: string[];
+  sellerUrgency: LeadUrgency;
+  askingPrice: number | null;
+  estimatedValue: number | null;
+};
+
+export type LeadScoreResult = { score: number; confidence: number; reasons: string[]; provider: string };
+
+const URGENCY_WEIGHT: Record<LeadUrgency, number> = { none: 0, low: 0.25, medium: 0.5, high: 0.75, immediate: 1 };
+/** A 30% discount to the known value maxes out the price signal. */
+const FULL_DISCOUNT_FRACTION = 0.3;
+/** How many flagged deal issues max out the issue signal. */
+const ISSUES_FOR_FULL_SIGNAL = 6;
+/** Score weights. Must add to 1. */
+const SCORE_WEIGHTS = { motivated: 0.35, urgency: 0.25, issues: 0.25, price: 0.15 } as const;
+
+/** 0 when the asking price is at or above the known value, 1 once it is FULL_DISCOUNT_FRACTION or more below it. */
+function priceGapSignal(askingPrice: number | null, estimatedValue: number | null): number {
+  if (askingPrice == null || estimatedValue == null || estimatedValue <= 0) return 0;
+  return Math.max(0, Math.min(1, (estimatedValue - askingPrice) / estimatedValue / FULL_DISCOUNT_FRACTION));
+}
+
+/**
+ * How much evidence backs the score, not how high the score is. More touches, more text, and known price
+ * and urgency data all raise it. Deterministic so the same lead history always yields the same confidence.
+ */
+function scoreConfidence(input: LeadTouches, touchTexts: string[]): number {
+  const nonEmpty = touchTexts.filter((t) => t.trim().length > 0);
+  const totalChars = nonEmpty.reduce((sum, t) => sum + t.length, 0);
+  let c = Math.min(0.4, nonEmpty.length * 0.08);
+  c += Math.min(0.25, (totalChars / 2000) * 0.25);
+  c += input.sellerUrgency !== "none" ? 0.1 : 0;
+  c += input.flaggedIssues.length > 0 ? 0.1 : 0;
+  c += input.askingPrice != null && input.estimatedValue != null ? 0.15 : 0;
+  return Math.round(Math.min(1, c) * 1000) / 1000;
+}
+
+/**
+ * Score a lead 0 to 100 from every touch recorded on it. Confidence measures how much evidence backs the
+ * score, independent of its value, and is what the caller uses to decide whether the result is applied
+ * automatically, offered as a suggestion, or sent to a human (see AUTO_ACT_CONFIDENCE and SUGGEST_CONFIDENCE
+ * in ./types). Works against either adapter: the mock is deterministic and keyword based with no network
+ * calls, TypeSafe answers the same two questions through Jev.
+ */
+export async function scoreLead(provider: JudgmentProvider, input: LeadTouches): Promise<LeadScoreResult> {
+  const touchTexts = [...input.notes, ...input.inboundMessages, ...input.outboundMessages, ...input.callOutcomes];
+  const state = [
+    input.notes.length ? `Notes:\n${input.notes.join("\n")}` : null,
+    input.inboundMessages.length ? `Seller messages:\n${input.inboundMessages.join("\n")}` : null,
+    input.outboundMessages.length ? `Our messages:\n${input.outboundMessages.join("\n")}` : null,
+    input.callOutcomes.length ? `Call outcomes:\n${input.callOutcomes.join("\n")}` : null,
+  ].filter(Boolean).join("\n\n") || "No touches recorded yet.";
+  const result = await provider.ask(state, [
+    { id: "motivated", type: "noul", question: "Is the seller motivated to sell below market for speed or certainty?" },
+    { id: "urgent", type: "noul", question: "Does the seller need to sell soon or show urgency?" },
+  ]);
+  const motivated = (result.answers["motivated"] as ProbabilityAnswer | undefined)?.probability ?? 0;
+  const urgencySignal = Math.max((result.answers["urgent"] as ProbabilityAnswer | undefined)?.probability ?? 0, URGENCY_WEIGHT[input.sellerUrgency]);
+  const issueSignal = Math.min(1, input.flaggedIssues.length / ISSUES_FOR_FULL_SIGNAL);
+  const priceSignal = priceGapSignal(input.askingPrice, input.estimatedValue);
+  const weighted = motivated * SCORE_WEIGHTS.motivated + urgencySignal * SCORE_WEIGHTS.urgency + issueSignal * SCORE_WEIGHTS.issues + priceSignal * SCORE_WEIGHTS.price;
+  const score = Math.round(Math.max(0, Math.min(1, weighted)) * 100);
+
+  const reasons: string[] = [];
+  if (motivated >= 0.3) reasons.push("Notes or messages show the seller is motivated to sell.");
+  if (urgencySignal >= 0.3) reasons.push(`Urgency signal present, stated urgency is ${input.sellerUrgency}.`);
+  if (input.flaggedIssues.length) reasons.push(`${input.flaggedIssues.length} flagged deal issue${input.flaggedIssues.length === 1 ? "" : "s"}: ${input.flaggedIssues.map((k) => k.replace(/_/g, " ")).join(", ")}.`);
+  if (priceSignal > 0) reasons.push("Asking price is below the known property value.");
+  if (!reasons.length) reasons.push("Not enough signal yet in the notes, messages, and calls on this lead.");
+
+  return { score, confidence: scoreConfidence(input, touchTexts), reasons, provider: result.provider };
+}
+
+/**
+ * Converts a model's 0 to 100 score to the 1 to 10 scale that leads.motivationScore has always used
+ * (the CRM's user facing field, its sort, and its form validation). lead_scores.score itself stays on
+ * the model's native 0 to 100 scale; only a write into the 1 to 10 column goes through this.
+ */
+export function scoreToMotivation(score: number): number {
+  return Math.min(10, Math.max(1, Math.round(score / 10)));
+}

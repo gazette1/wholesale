@@ -6,7 +6,8 @@ export const base = {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: uuid("org_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Set by the ORM on every update as well as by the Supabase trigger, so PGlite and hosted Postgres agree.
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 };
 
 export const roleEnum = pgEnum("role", ["admin", "acquisitions", "dispositions", "viewer"]);
@@ -33,3 +34,6 @@ export const analysisStatusEnum = pgEnum("analysis_status", ["draft", "reviewing
 export const fundingEnum = pgEnum("funding", ["cash", "hard_money", "conventional", "mixed"]);
 export const submissionResponseEnum = pgEnum("submission_response", ["none", "interested", "pass", "offer"]);
 export const savedViewEntityEnum = pgEnum("saved_view_entity", ["leads", "buyers"]);
+export const callStatusEnum = pgEnum("call_status", ["queued", "ringing", "in_progress", "completed", "busy", "no_answer", "failed", "canceled"]);
+export const alertKindEnum = pgEnum("alert_kind", ["lead_untouched", "follow_up_overdue", "offer_expiring"]);
+export const scoreReviewStatusEnum = pgEnum("score_review_status", ["auto_applied", "suggested", "needs_review", "accepted", "overridden"]);

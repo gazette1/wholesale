@@ -1,11 +1,12 @@
 import { requireSession, can } from "@/lib/auth";
 import { listTemplates } from "@/lib/data/campaigns";
 import { saveTemplate, deleteTemplate } from "@/lib/actions/campaigns";
-import { ActionForm, ActionButton } from "@/components/ui/action-form";
+import { ActionButton } from "@/components/ui/action-form";
 import { PageHeader } from "@/components/ui/misc";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
-import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { MERGE_FIELD_HELP } from "@/lib/template-fields";
+import { TemplateForm } from "./template-form";
 
 export const metadata = { title: "Templates" };
 
@@ -15,37 +16,26 @@ export default async function TemplatesPage() {
   const writable = can(session, "campaign:write");
   return (
     <>
-      <PageHeader title="Templates" description="Merge fields: {{first_name}}, {{last_name}}, {{property_address}}, {{city}}, {{sender_name}}. Text templates should include an opt out line on the first touch." />
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-3">
+      <PageHeader title="Templates" description={`Merge fields: ${MERGE_FIELD_HELP}. Text templates should include an opt out line on the first touch.`} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-3 min-w-0">
+          {templates.length === 0 ? <p className="text-[13px] text-fg-3">No templates yet.</p> : null}
           {templates.map((t) => (
             <Card key={t.id}>
               <CardHeader title={<span className="flex items-center gap-2">{t.name}<Badge tone={t.channel === "sms" ? "brand" : "info"}>{t.channel.toUpperCase()}</Badge>{!t.active ? <Badge>Inactive</Badge> : null}</span>} actions={writable ? <ActionButton action={deleteTemplate.bind(null, t.id)} variant="ghost" size="sm" confirm="Delete this template?">Delete</ActionButton> : null} />
               <CardBody>
                 {writable ? (
-                  <ActionForm action={saveTemplate.bind(null, t.id)} submitLabel="Save" variant="outline" size="sm" className="space-y-2">
-                    <div className="grid grid-cols-3 gap-2">
-                      <Field label="Name" className="col-span-2"><Input name="name" defaultValue={t.name} /></Field>
-                      <Field label="Channel"><Select name="channel" defaultValue={t.channel}><option value="sms">Text</option><option value="email">Email</option></Select></Field>
-                    </div>
-                    {t.channel === "email" ? <Field label="Subject"><Input name="subject" defaultValue={t.subject ?? ""} /></Field> : null}
-                    <Field label="Body"><Textarea name="body" defaultValue={t.body} className="min-h-[90px]" /></Field>
-                  </ActionForm>
-                ) : <p className="text-[13px] whitespace-pre-wrap">{t.body}</p>}
+                  <TemplateForm action={saveTemplate.bind(null, t.id)} template={{ name: t.name, channel: t.channel, subject: t.subject, body: t.body, active: t.active }} />
+                ) : <p className="text-[13px] whitespace-pre-wrap break-words">{t.channel === "email" && t.subject ? <span className="block font-medium mb-1">{t.subject}</span> : null}{t.body}</p>}
               </CardBody>
             </Card>
           ))}
         </div>
         {writable ? (
-          <Card>
+          <Card className="min-w-0 self-start">
             <CardHeader title="New template" />
             <CardBody>
-              <ActionForm action={saveTemplate.bind(null, null)} submitLabel="Create" resetOnSuccess className="space-y-2">
-                <Field label="Name"><Input name="name" required /></Field>
-                <Field label="Channel"><Select name="channel" defaultValue="sms"><option value="sms">Text</option><option value="email">Email</option></Select></Field>
-                <Field label="Subject (email only)"><Input name="subject" /></Field>
-                <Field label="Body"><Textarea name="body" required placeholder="Hi {{first_name}}, this is {{sender_name}}..." className="min-h-[120px]" /></Field>
-              </ActionForm>
+              <TemplateForm action={saveTemplate.bind(null, null)} />
             </CardBody>
           </Card>
         ) : null}

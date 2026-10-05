@@ -8,7 +8,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
   const { path } = await params;
   const key = path.map(decodeURIComponent).join("/");
-  if (!key.startsWith(`${session.orgId}/`)) return new NextResponse("Forbidden", { status: 403 });
+  // A ".." segment would pass the prefix check and then resolve outside the org folder.
+  if (!key.startsWith(`${session.orgId}/`) || key.split(/[\\/]/).some((part) => part === ".." || part === ".")) return new NextResponse("Forbidden", { status: 403 });
   const data = await fileStorage().get(key);
   if (!data) return new NextResponse("Not found", { status: 404 });
   return new NextResponse(new Uint8Array(data), { headers: { "content-type": "application/octet-stream" } });

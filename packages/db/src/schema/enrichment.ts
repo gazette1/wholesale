@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, boolean, jsonb, numeric, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, boolean, jsonb, numeric, integer, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { base, reportStatusEnum, compSourceEnum } from "./_shared";
 import { orgs } from "./identity";
 import { properties } from "./properties";
@@ -49,3 +49,14 @@ export const comps = pgTable("comps", {
   included: boolean("included").notNull().default(true),
   notes: text("notes"),
 }, (t) => [index("comps_property_idx").on(t.propertyId)]);
+
+/** One row per org. Controls automatic property reports on new leads and what they may cost. Spend is read from property_reports.cost_cents. */
+export const enrichmentSettings = pgTable("enrichment_settings", {
+  ...base,
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  autoEnrichOnCreate: boolean("auto_enrich_on_create").notNull().default(false),
+  /** Most one lead may cost across all of its reports, in cents. */
+  perLeadCapCents: integer("per_lead_cap_cents").notNull().default(100),
+  /** Most the org may spend on reports in one calendar month, in cents. */
+  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(5000),
+}, (t) => [uniqueIndex("enrichment_settings_org").on(t.orgId)]);

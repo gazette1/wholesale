@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, boolean, jsonb, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, boolean, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { roleEnum } from "./_shared";
 
@@ -22,8 +22,12 @@ export const profiles = pgTable("profiles", {
   twilioNumber: text("twilio_number"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("profiles_org_idx").on(t.orgId)]);
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  index("profiles_org_idx").on(t.orgId),
+  // A login claims its profile by email, so one email may exist once per org, whatever its letter case.
+  uniqueIndex("profiles_org_email_unique").on(t.orgId, sql`lower(${t.email})`),
+]);
 
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),

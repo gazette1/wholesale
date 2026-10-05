@@ -1,18 +1,20 @@
 "use client";
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createLead, type ActionResult } from "@/lib/actions/leads";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
+import { useServerForm } from "@/components/ui/action-form";
 
 export function NewLeadForm({ team, sources, defaultAssignee }: { team: { id: string; name: string }[]; sources: { id: string; name: string }[]; defaultAssignee: string }) {
-  const [state, action, pending] = useActionState<ActionResult | null, FormData>(createLead, null);
+  // Submitted by hand so a validation error keeps everything the user typed.
+  const { state, pending, onSubmit } = useServerForm((form) => createLead(null, form));
   const router = useRouter();
   useEffect(() => { if (state?.ok && state.id) router.push(`/leads/${state.id}`); }, [state, router]);
   return (
-    <form action={action} className="grid gap-4 lg:grid-cols-3">
+    <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-2 space-y-4">
         <Card>
           <CardHeader title="Property" />

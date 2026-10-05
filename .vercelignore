@@ -1,0 +1,13 @@
+# Vercel CLI uploads this folder as the build source. Keep secrets and local-only data out of it.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+.pglite
+.storage
+**/.next
+**/node_modules
+**/test-results
+**/playwright-report
+tools/tmp

@@ -13,3 +13,7 @@ tools/tmp/
 apps/web/.next/
 next-env.d.ts
 .vercel/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+test-results/
+playwright-report/

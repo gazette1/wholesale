@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DealCalc",
+  "version": "0.1.0",
+  "identifier": "com.dealcalc.desktop",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "frontendDist": "../shell"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "dmg"],
+    "icon": ["icons/icon.ico", "icons/icon.icns"],
+    "copyright": "",
+    "category": "Business",
+    "shortDescription": "DealCalc acquisitions CRM and deal analyzer",
+    "longDescription": "Desktop wrapper around the hosted DealCalc web app."
+  },
+  "plugins": {
+    "updater": {
+      "active": false,
+      "endpoints": ["https://releases.example.invalid/dealcalc/{{target}}/{{current_version}}"],
+      "dialog": true,
+      "pubkey": ""
+    }
+  }
+}

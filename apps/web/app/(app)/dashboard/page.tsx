@@ -2,12 +2,12 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { dashboardData, myTasksDue } from "@/lib/data/dashboard";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
-import { Card, CardHeader, CardBody, Kpi } from "@/components/ui/card";
+import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { StageBadge, Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { relative, dueLabel, fullName } from "@/lib/utils";
+import { Button, LinkButton } from "@/components/ui/button";
+import { relative, dueLabel, fullName, cn } from "@/lib/utils";
 import { SourceChart } from "./charts";
-import { Phone, Plus } from "lucide-react";
+import { Phone, Plus, ArrowUpRight } from "lucide-react";
 
 export const metadata = { title: "Dashboard" };
 
@@ -17,19 +17,19 @@ export default async function DashboardPage() {
   const speed = data.avgFirstResponseMinutes;
   return (
     <>
-      <PageHeader title={`Good ${greeting()}, ${session.fullName.split(" ")[0]}`} description="Speed to contact and consistent follow up are the job. Here is what needs you." actions={<Link href="/leads/new"><Button variant="primary"><Plus className="h-4 w-4" />New lead</Button></Link>} />
+      <PageHeader title={`Good ${greeting()}, ${session.fullName.split(" ")[0]}`} description="Speed to contact and consistent follow up are the job. Here is what needs you." actions={<LinkButton href="/leads/new" variant="primary"><Plus className="h-4 w-4" />New lead</LinkButton>} />
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
-        <Kpi label="Follow ups due today" value={data.followUpsDue} tone={data.followUpsDue > 0 ? "warn" : undefined} sub={data.overdue > 0 ? `${data.overdue} overdue` : "Nothing overdue"} />
-        <Kpi label="Untouched leads" value={data.untouched} tone={data.untouched > 0 ? "bad" : "good"} sub="No contact attempt yet" />
-        <Kpi label="New this week" value={data.newThisWeek} sub={`${data.openLeads} open in pipeline`} />
-        <Kpi label="Offers out" value={data.offersSent} sub="Awaiting seller response" />
-        <Kpi label="Under contract" value={data.contracts} tone="brand" sub="Contract and diligence" />
-        <Kpi label="Closed" value={data.closed} tone="good" sub={speed ? `Avg first response ${speed < 60 ? `${Math.round(speed)} min` : `${(speed / 60).toFixed(1)} h`}` : "No response data yet"} />
+        <KpiLink href="/leads?due=now" label="Follow ups due" value={data.followUpsDue} tone={data.followUpsDue > 0 ? "warn" : undefined} sub={data.overdue > 0 ? `${data.overdue} overdue, ${data.followUpsDue - data.overdue} due today` : "Nothing overdue"} />
+        <KpiLink href="/leads?untouched=1" label="Untouched leads" value={data.untouched} tone={data.untouched > 0 ? "bad" : "good"} sub="No contact attempt yet" />
+        <KpiLink href="/leads?created=week&status=all" label="New this week" value={data.newThisWeek} sub={`${data.openLeads} open in pipeline`} />
+        <KpiLink href="/leads?offer=sent&status=all" label="Offers out" value={data.offersSent} sub="Awaiting seller response" />
+        <KpiLink href="/leads?stage=under_contract,due_diligence&status=all" label="Under contract" value={data.contracts} tone="brand" sub="Contract and diligence" />
+        <KpiLink href="/leads?status=won" label="Closed" value={data.closed} tone="good" sub={speed ? `Avg first response ${speed < 60 ? `${Math.round(speed)} min` : `${(speed / 60).toFixed(1)} h`}` : "No response data yet"} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid gap-4 lg:grid-cols-3 items-start">
+        <Card className="lg:col-span-2 min-w-0">
           <CardHeader title="Pipeline" description="Open leads by stage" actions={<Link href="/pipeline" className="text-xs text-brand hover:underline">Open board</Link>} />
           <CardBody>
             <div className="flex flex-wrap gap-2">
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
           </CardBody>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader title="My follow ups" description="Due today or overdue" actions={<Link href="/tasks" className="text-xs text-brand hover:underline">All tasks</Link>} />
           <CardBody className="p-0">
             {tasks.length === 0 ? <div className="p-4"><EmptyState title="You are caught up" description="No follow ups due today." /></div> : (
@@ -68,7 +68,7 @@ export default async function DashboardPage() {
           </CardBody>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 min-w-0">
           <CardHeader title="Newest open leads" description="Call these first" />
           <CardBody className="p-0">
             <ul className="divide-y divide-border">
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
           </CardBody>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader title="Leads by source" description="All time" />
           <CardBody>
             <SourceChart data={data.bySource} />
@@ -116,4 +116,19 @@ export default async function DashboardPage() {
 function greeting() {
   const h = new Date().getHours();
   return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+}
+
+/** A KPI tile that links to the filtered leads list behind the number. */
+function KpiLink({ href, label, value, sub, tone }: { href: string; label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "good" | "bad" | "warn" | "brand" }) {
+  const toneClass = tone === "good" ? "text-good" : tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : tone === "brand" ? "text-brand" : "text-fg";
+  return (
+    <Link href={href} aria-label={`${label}: ${String(value)}. View these leads.`} className="group block rounded-lg border border-border bg-surface px-4 py-3 shadow-[var(--shadow-card)] transition-colors hover:border-brand hover:bg-brand-soft/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:border-brand">
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-xs text-fg-3 font-medium">{label}</div>
+        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-fg-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+      </div>
+      <div className={cn("text-2xl font-semibold tracking-tight num mt-1", toneClass)}>{value}</div>
+      {sub ? <div className="text-xs text-fg-3 mt-1">{sub}</div> : null}
+    </Link>
+  );
 }

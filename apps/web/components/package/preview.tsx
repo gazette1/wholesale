@@ -10,7 +10,8 @@ export function PackagePreview({ data }: { data: PackageData }) {
   return (
     <div className="rounded-lg border border-border bg-white shadow-[var(--shadow-card)] p-8 max-w-[820px] mx-auto text-[13px]">
       <div className="flex items-end justify-between border-b-2 pb-3 mb-5" style={{ borderColor: color }}>
-        <div><div className="text-base font-bold" style={{ color }}>{data.branding.companyName ?? "Acquisitions Team"}</div><div className="text-xs text-fg-3">{[data.branding.phone, data.branding.email].filter(Boolean).join(" · ")}</div></div>
+        {/* Only an https logo is shown, and it is decorative: the company name sits under it. */}
+        <div>{data.branding.logoUrl && /^https:\/\//i.test(data.branding.logoUrl) ? <img src={data.branding.logoUrl} alt="" className="h-9 w-auto max-w-[160px] object-contain mb-1" referrerPolicy="no-referrer" /> : null}<div className="text-base font-bold" style={{ color }}>{data.branding.companyName ?? "Acquisitions Team"}</div><div className="text-xs text-fg-3">{[data.branding.phone, data.branding.email].filter(Boolean).join(" · ")}</div></div>
         <div className="text-xs text-fg-3">Investor deal package · {data.generatedAt}</div>
       </div>
       <h2 className="text-xl font-bold">{data.property.address}</h2>
@@ -24,7 +25,7 @@ export function PackagePreview({ data }: { data: PackageData }) {
       <Section title="Property summary">
         <div className="grid sm:grid-cols-2 gap-x-6">
           <Row l="Type" v={data.property.type ?? "n/a"} /><Row l="Year built" v={data.property.yearBuilt ?? "n/a"} />
-          <Row l="Beds / baths" v={`${data.property.beds ?? "?"} / ${data.property.baths ?? "?"}`} /><Row l="Lot" v={data.property.lot ? `${num(data.property.lot)} sq ft` : "n/a"} />
+          <Row l="Beds / baths" v={`${data.property.beds != null ? Number(data.property.beds) : "?"} / ${data.property.baths != null ? Number(data.property.baths) : "?"}`} /><Row l="Lot" v={data.property.lot ? `${num(data.property.lot)} sq ft` : "n/a"} />
           <Row l="Square feet" v={data.property.sqft ? num(data.property.sqft) : "n/a"} /><Row l="Hold estimate" v={`${data.inputs.holdMonths} months`} />
         </div>
         {data.summary ? <p className="mt-2 leading-relaxed">{data.summary}</p> : null}
@@ -33,7 +34,7 @@ export function PackagePreview({ data }: { data: PackageData }) {
         <Section title="Flip projection for the end buyer">
           <div className="grid sm:grid-cols-2 gap-x-6">
             <div><Row l="Purchase from us" v={money(w.investorBuyPrice)} /><Row l="Repairs" v={money(a.repairCosts)} /><Row l="Financing and holding (est.)" v={money(a.financing.total + a.holding.total)} /><Row l="Buying and selling costs (est.)" v={money(a.buying.total + a.selling.total)} /></div>
-            <div><Row l="Resale at ARV" v={money(data.inputs.arv)} /><Row l="Projected end buyer profit" v={<b>{money(endBuyerProfit)}</b>} /><Row l="Investor all in % of ARV" v={percent(w.investorArvPct)} /><Row l="Rent estimate (buy and hold)" v={data.outputs.buyAndHold ? `${money(data.outputs.buyAndHold.current.grossRents)} / mo` : "n/a"} /></div>
+            <div><Row l="Resale at ARV" v={money(data.inputs.arv)} /><Row l="Projected end buyer profit" v={<b>{money(endBuyerProfit)}</b>} /><Row l="Investor all in % of ARV" v={percent(w.investorArvPct)} /><Row l="Rent estimate (buy and hold)" v={data.outputs.buyAndHold ? `${money(data.outputs.buyAndHold.current.grossRents)} / mo` : data.report?.rentEstimate ? `${money(data.report.rentEstimate)} / mo` : "n/a"} /></div>
           </div>
         </Section>
       ) : null}

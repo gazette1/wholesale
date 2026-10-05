@@ -1,6 +1,6 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contacts, leads, messages, activities, campaignEnrollments, messageTemplates, properties, profiles } from "@dealcalc/db";
-import { smsProvider, emailProvider, keywordIntent, renderTemplate, normalizePhone, judgmentProvider, classifyReply, type InboundMessage, type StatusUpdate } from "@dealcalc/integrations";
+import { smsProvider, emailProvider, keywordIntent, renderTemplate, normalizePhone, judgmentProvider, classifyReply, phoneMatchKey, phonesMatch, pickInboundContact, safeEqual, type InboundMessage, type StatusUpdate } from "@dealcalc/integrations";
 import { getDb } from "../db";
 
 export type SendInput = {
@@ -9,6 +9,19 @@ export type SendInput = {
 };
 
 export class ConsentError extends Error {}
+
+/**
+ * The mock providers accept unsigned webhook requests, which is fine on a developer machine and unsafe anywhere public.
+ * In production a mock provider route answers only when the caller sends X-Webhook-Secret equal to MOCK_WEBHOOK_SECRET.
+ * With the variable unset the routes stay closed. Demo deployments are closed too; the demo does not need inbound webhooks.
+ */
+export function mockWebhookAllowed(headers: Headers): boolean {
+  if (process.env.NODE_ENV !== "production") return true;
+  const expected = process.env.MOCK_WEBHOOK_SECRET;
+  const given = headers.get("x-webhook-secret");
+  if (!expected || !given) return false;
+  return safeEqual(given, expected);
+}
 
 /**
  * Send one message to a lead's contact. Checks consent, renders merge fields,
@@ -58,14 +71,45 @@ export async function sendToLead(input: SendInput) {
   return row!;
 }
 
-/** Match an inbound message to a contact and lead, honor STOP and HELP, classify with Jev, log everything. */
+/**
+ * Find the one contact an inbound message belongs to. SMS senders are reduced to digits and need at least 10 of
+ * them; the last 10 must equal the last 10 digits of a stored number. A sender with no digits, a short code, or an
+ * alphanumeric sender id matches nobody. When the number is on contacts in more than one org, the org that owns the
+ * receiving number wins, then the contact that was sent a message most recently.
+ */
+async function findInboundContact(msg: InboundMessage, channel: "sms" | "email") {
+  const db = await getDb();
+  let matchExpr;
+  if (channel === "sms") {
+    const key = phoneMatchKey(msg.from);
+    if (!key) return null;
+    matchExpr = sql`exists (select 1 from jsonb_array_elements(${contacts.phones}) p where right(regexp_replace(p->>'number', '[^0-9]', '', 'g'), 10) = ${key})`;
+  } else {
+    const from = msg.from.trim().toLowerCase();
+    if (!from.includes("@")) return null;
+    matchExpr = sql`exists (select 1 from jsonb_array_elements(${contacts.emails}) e where lower(e->>'address') = ${from})`;
+  }
+  const found = await db.select().from(contacts).where(matchExpr).orderBy(desc(contacts.createdAt)).limit(50);
+  // The SQL already compares digits; checking again here keeps the rule in one tested function.
+  const candidates = channel === "sms" ? found.filter((c) => c.phones.some((p) => phonesMatch(p.number, msg.from))) : found;
+  if (candidates.length <= 1) return candidates[0] ?? null;
+
+  let receivingOrgIds: string[] = [];
+  const toKey = channel === "sms" ? phoneMatchKey(msg.to) : null;
+  if (toKey) {
+    const owners = await db.select({ orgId: profiles.orgId }).from(profiles).where(sql`right(regexp_replace(coalesce(${profiles.twilioNumber}, ''), '[^0-9]', '', 'g'), 10) = ${toKey}`);
+    receivingOrgIds = [...new Set(owners.map((o) => o.orgId))];
+  }
+  const lastOut = await db.select({ contactId: messages.contactId, at: sql<string>`max(${messages.createdAt})` }).from(messages)
+    .where(and(inArray(messages.contactId, candidates.map((c) => c.id)), eq(messages.direction, "out"), eq(messages.channel, channel))).groupBy(messages.contactId);
+  const lastOutById = new Map(lastOut.map((r) => [r.contactId, r.at]));
+  return pickInboundContact(candidates.map((c) => ({ ...c, lastOutboundAt: lastOutById.get(c.id) ?? null })), receivingOrgIds);
+}
+
+/** Match an inbound message to one contact and its lead, honor STOP and HELP, classify with Jev, log everything. */
 export async function handleInbound(msg: InboundMessage, channel: "sms" | "email") {
   const db = await getDb();
-  const from = channel === "sms" ? normalizePhone(msg.from) ?? msg.from : msg.from.toLowerCase();
-  const matchExpr = channel === "sms"
-    ? sql`exists (select 1 from jsonb_array_elements(${contacts.phones}) p where regexp_replace(p->>'number', '\\D', '', 'g') like '%' || ${from.replace(/\D/g, "").slice(-10)})`
-    : sql`exists (select 1 from jsonb_array_elements(${contacts.emails}) e where lower(e->>'address') = ${from})`;
-  const contact = await db.query.contacts.findFirst({ where: matchExpr });
+  const contact = await findInboundContact(msg, channel);
   const lead = contact
     ? await db.query.leads.findFirst({ where: and(eq(leads.primaryContactId, contact.id), eq(leads.orgId, contact.orgId)), orderBy: desc(leads.createdAt) })
     : null;
@@ -79,10 +123,11 @@ export async function handleInbound(msg: InboundMessage, channel: "sms" | "email
   }).returning();
 
   if (intent === "stop") {
-    await db.update(contacts).set({ smsConsent: "opted_out", smsConsentAt: new Date() }).where(eq(contacts.id, contact!.id));
-    await db.update(campaignEnrollments).set({ status: "opted_out" }).where(eq(campaignEnrollments.contactId, contact!.id));
+    // Exactly one contact: the matched id inside its own org. Never a pattern or a number wide update.
+    await db.update(contacts).set({ smsConsent: "opted_out", smsConsentAt: new Date() }).where(and(eq(contacts.id, contact!.id), eq(contacts.orgId, orgId)));
+    await db.update(campaignEnrollments).set({ status: "opted_out" }).where(and(eq(campaignEnrollments.contactId, contact!.id), eq(campaignEnrollments.orgId, orgId)));
   } else if (intent === "start") {
-    await db.update(contacts).set({ smsConsent: "opted_in", smsConsentAt: new Date() }).where(eq(contacts.id, contact!.id));
+    await db.update(contacts).set({ smsConsent: "opted_in", smsConsentAt: new Date() }).where(and(eq(contacts.id, contact!.id), eq(contacts.orgId, orgId)));
   }
 
   let classification: Awaited<ReturnType<typeof classifyReply>> | null = null;

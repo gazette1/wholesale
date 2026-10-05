@@ -8,6 +8,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/misc";
 import { money, relative, percent } from "@/lib/utils";
 import { Calculator } from "lucide-react";
+import { SubmitOnce } from "@/components/ui/action-form";
 
 const STATUS_TONE: Record<string, "neutral" | "info" | "good" | "bad"> = { draft: "neutral", reviewing: "info", approved_for_offer: "good", rejected: "bad" };
 
@@ -15,9 +16,9 @@ export function AnalyzerTab({ detail, canWrite }: { detail: LeadDetail; canWrite
   const create = createAnalysis.bind(null, detail.property.id, detail.lead.id);
   return (
     <Card>
-      <CardHeader title="Analyses" description="Each version is a scenario. Approve one to drive the offer." actions={canWrite ? <form action={create}><Button variant="primary" size="sm" type="submit">New analysis</Button></form> : null} />
+      <CardHeader title="Analyses" description="Each version is a scenario. Approve one to drive the offer." actions={canWrite ? <form action={create}><SubmitOnce size="sm">New analysis</SubmitOnce></form> : null} />
       <CardBody className="p-0">
-        {detail.analyses.length === 0 ? <div className="p-4"><EmptyState icon={Calculator} title="No analysis yet" description="Start from the property report and the workbook defaults, then adjust." action={canWrite ? <form action={create}><Button variant="primary" type="submit">Create base case</Button></form> : undefined} /></div> : (
+        {detail.analyses.length === 0 ? <div className="p-4"><EmptyState icon={Calculator} title="No analysis yet" description="Start from the property report and the workbook defaults, then adjust." action={canWrite ? <form action={create}><SubmitOnce>Create base case</SubmitOnce></form> : undefined} /></div> : (
           <Table>
             <THead><tr><TH>Version</TH><TH>Status</TH><TH right>ARV</TH><TH right>Offer</TH><TH right>MAO</TH><TH right>Spread</TH><TH right>Flip net</TH><TH right>% ARV</TH><TH>Updated</TH></tr></THead>
             <TBody>

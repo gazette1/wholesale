@@ -127,3 +127,16 @@ describe("judgment", () => {
     expect(r.action).toBe("review");
   });
 });
+
+describe("mock judgment on call notes", () => {
+  it("flags what the notes say and leaves out what they do not", async () => {
+    const { MockJudgmentProvider } = await import("../src/judgment/mock");
+    const { assessDistress } = await import("../src/judgment/uses");
+    const notes = "Seller inherited the house through probate. There is a lien from the city and back taxes are owed. A tenant lives upstairs. The bank started foreclosure and there are code violations for the porch.";
+    const a = await assessDistress(new MockJudgmentProvider(), notes);
+    for (const hit of ["probate_or_inherited", "liens_or_judgments", "occupied_by_tenant", "mortgage_default_or_foreclosure", "code_violations", "tax_delinquent"]) expect(a.signals[hit]).toBeGreaterThanOrEqual(0.5);
+    // Nothing in the notes mentions these, and "or" must not match inside "foreclosure".
+    for (const miss of ["divorce_or_partner_dispute", "hoarder_or_environmental", "occupied_by_squatter"]) expect(a.signals[miss]).toBeLessThan(0.5);
+    expect(Math.max(...Object.values(a.signals))).toBeLessThanOrEqual(0.55);
+  });
+});

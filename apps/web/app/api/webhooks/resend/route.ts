@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { emailProvider } from "@dealcalc/integrations";
-import { applyStatus } from "@/lib/services/messaging";
+import { applyStatus, mockWebhookAllowed } from "@/lib/services/messaging";
 import { ensureDevDatabase } from "@dealcalc/db";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const provider = emailProvider();
   const req = { url: request.url, method: "POST", headers: Object.fromEntries(request.headers), rawBody };
+  if (provider.name !== "resend" && !mockWebhookAllowed(request.headers)) return new NextResponse("Unauthorized", { status: 401 });
   if (provider.name === "resend" && !provider.verifyWebhook(req)) return new NextResponse("Invalid signature", { status: 403 });
   const update = provider.parseStatus(req);
   if (!update) return new NextResponse("Ignored", { status: 200 });

@@ -14,6 +14,11 @@ export type AcquisitionsInput = {
   assignmentFee: number;
   firstLienAmount: number; firstPointsRate: number; firstInterestRate: number; firstMonthlyInterestOnlyRate: number;
   secondLienAmount: number; secondPointsRate: number; secondInterestRate: number; secondMonthlyInterestOnlyRate: number;
+  /**
+   * Annual interest rate per lien, 0.14 for 14 percent. When set, it replaces that lien's two workbook rate cells:
+   * interest for the hold is lien x annual / 12 x hold months. See annualRates() below.
+   */
+  firstAnnualRate?: number | null; secondAnnualRate?: number | null;
   miscLienAmountPaid: number; miscPointsPaid: number; miscInterestPaid: number; miscMonthlyInterestOnlyPaid: number; miscFinancingCosts: number;
   propertyTaxRate: number; hoaMonthly: number; insuranceMonthly: number; utilitiesMonthly: number;
   gasMonthly: number; waterMonthly: number; electricityMonthly: number; miscUtilitiesMonthly: number;
@@ -61,7 +66,22 @@ export type AcquisitionsOutput = {
 
 export const DEFAULT_MAX_WEEKS = 36;
 
-export function acquisitions(input: AcquisitionsInput): AcquisitionsOutput {
+/**
+ * The workbook has two interest cells per lien and neither takes an annual rate. F21 multiplies its rate by the lien and
+ * by the hold months, so it only works for a monthly rate; F25 leaves the hold out (A-21). Ous works around this by typing
+ * =0.14/12 into the interest only cell (A-03) and leaving the other at zero. An annual rate input does the same thing
+ * without the hand division: the lien's interest only cell becomes annual / 12 and its other rate cell becomes zero. For
+ * the first lien this reproduces the workbook's cached result to the cent. Decided by Russ on 2026-09-21.
+ */
+export function annualRates(input: AcquisitionsInput): AcquisitionsInput {
+  let out = input;
+  if (input.firstAnnualRate != null) out = { ...out, firstInterestRate: 0, firstMonthlyInterestOnlyRate: input.firstAnnualRate / 12 };
+  if (input.secondAnnualRate != null) out = { ...out, secondInterestRate: 0, secondMonthlyInterestOnlyRate: input.secondAnnualRate / 12 };
+  return out;
+}
+
+export function acquisitions(rawInput: AcquisitionsInput): AcquisitionsOutput {
+  const input = annualRates(rawInput);
   const flags = withFlags(input.flags);
   const arvFactor = input.arvFactor ?? DEFAULT_ARV_FACTOR;
   const hold = input.holdMonths;

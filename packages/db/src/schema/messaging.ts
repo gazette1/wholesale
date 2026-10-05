@@ -1,5 +1,5 @@
 import { pgTable, text, uuid, boolean, jsonb, integer, timestamp, index } from "drizzle-orm/pg-core";
-import { base, channelEnum, directionEnum, messageStatusEnum, campaignStatusEnum, enrollmentStatusEnum, jobStatusEnum } from "./_shared";
+import { base, channelEnum, directionEnum, messageStatusEnum, campaignStatusEnum, enrollmentStatusEnum, jobStatusEnum, callStatusEnum } from "./_shared";
 import { orgs, profiles } from "./identity";
 import { leads } from "./pipeline";
 import { contacts } from "./properties";
@@ -83,3 +83,27 @@ export const jobs = pgTable("jobs", {
   attempts: integer("attempts").notNull().default(0),
   lastError: text("last_error"),
 }, (t) => [index("jobs_due_idx").on(t.status, t.runAt)]);
+
+/** Voice calls placed or received through the voice provider. One row per call leg the team cares about. */
+export const calls = pgTable("calls", {
+  ...base,
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  leadId: uuid("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  direction: directionEnum("direction").notNull(),
+  fromAddr: text("from_addr").notNull(),
+  toAddr: text("to_addr").notNull(),
+  provider: text("provider").notNull(),
+  providerCallId: text("provider_call_id"),
+  status: callStatusEnum("status").notNull().default("queued"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  durationSeconds: integer("duration_seconds"),
+  recordingUrl: text("recording_url"),
+  outcome: text("outcome"),
+  notes: text("notes"),
+  placedBy: uuid("placed_by").references(() => profiles.id, { onDelete: "set null" }),
+}, (t) => [
+  index("calls_lead_time_idx").on(t.leadId, t.createdAt),
+  index("calls_provider_id_idx").on(t.providerCallId),
+]);

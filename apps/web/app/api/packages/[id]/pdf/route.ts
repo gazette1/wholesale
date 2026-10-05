@@ -10,7 +10,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   const token = request.nextUrl.searchParams.get("token");
   const result = token ? await packageData(token, { byToken: true }) : await packageData(id);
-  if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!result || result.pkg.id !== id) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!token) {
     const session = await getSession();
     if (!session || session.orgId !== result.orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
