@@ -1,4 +1,5 @@
 import { env } from "../env";
+import { twilioCredentials } from "../twilio-auth";
 import { MockMessagingProvider } from "./mock";
 import { TwilioSmsProvider } from "./twilio";
 import { ResendEmailProvider } from "./resend";
@@ -16,8 +17,9 @@ let email: EmailProvider | undefined;
 export function smsProvider(): SmsProvider {
   if (sms) return sms;
   const e = env();
-  sms = e.MESSAGING_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN
-    ? new TwilioSmsProvider(e.TWILIO_ACCOUNT_SID, e.TWILIO_AUTH_TOKEN, { messagingServiceSid: e.TWILIO_MESSAGING_SERVICE_SID, fromNumber: e.TWILIO_FROM_NUMBER })
+  const creds = e.MESSAGING_PROVIDER === "twilio" ? twilioCredentials(e) : null;
+  sms = creds
+    ? new TwilioSmsProvider(creds.accountSid, e.TWILIO_AUTH_TOKEN, { auth: creds, messagingServiceSid: e.TWILIO_MESSAGING_SERVICE_SID, fromNumber: e.TWILIO_FROM_NUMBER })
     : mock;
   return sms;
 }

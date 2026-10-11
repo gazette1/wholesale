@@ -21,7 +21,8 @@ Interface `SmsProvider`. The adapter posts to the Messages endpoint with basic a
 
 Setup:
 
-1. `MESSAGING_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and either `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
+1. `MESSAGING_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, one credential pair (below), and either `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
+   Two credential pairs are accepted for REST calls, both with the account SID in the URL. An API key pair (`TWILIO_API_KEY_SID` starting with `SK`, plus `TWILIO_API_KEY_SECRET`) is used when both are set. Otherwise `TWILIO_AUTH_TOKEN` is used with the account SID as the username. `TWILIO_AUTH_TOKEN` is still required to verify inbound webhooks, because Twilio signs them with the auth token and not with an API key secret. With only an API key, sending works, webhook verification fails closed, and `providerStatus().webhookVerification` reports `auth_token_missing`. Variables: `MESSAGING_PROVIDER`, `VOICE_PROVIDER`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_TWIML_APP_SID`, `TWILIO_FROM_NUMBER`, `TWILIO_MESSAGING_SERVICE_SID`.
 2. Each team member can have their own number under Settings, Team (twilio number). Sends from that number when set.
 3. Number configuration: "A message comes in" webhook to `https://<app>/api/webhooks/twilio/sms`, HTTP POST. Status callbacks are attached per send when `APP_URL` is set.
 4. `APP_URL` must be the exact public origin, because the signature check hashes the full URL.
@@ -73,7 +74,7 @@ Environment variables:
 | Variable | Needed for | Notes |
 |---|---|---|
 | `VOICE_PROVIDER` | both | `mock` (default) or `twilio` |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | both | Shared with SMS. With either one missing the mock is used. |
+| `TWILIO_ACCOUNT_SID`, plus `TWILIO_AUTH_TOKEN` or the API key pair | both | Shared with SMS. Without the account SID and one credential pair the mock is used. The auth token is still needed to verify webhooks. |
 | `TWILIO_FROM_NUMBER` | both | Caller ID when the team member has no Twilio number of their own under Settings, Team |
 | `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` | browser calls | A standard API key from the Twilio console. Signs the access token (HS256, one hour). |
 | `TWILIO_TWIML_APP_SID` | browser calls | The TwiML app whose Voice URL is the first route below |

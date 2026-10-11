@@ -1,4 +1,5 @@
 import { env } from "../env";
+import { twilioCredentials } from "../twilio-auth";
 import { MockVoiceProvider } from "./mock";
 import { TwilioVoiceProvider } from "./twilio";
 import type { VoiceProvider } from "./types";
@@ -13,8 +14,9 @@ let voice: VoiceProvider | undefined;
 export function voiceProvider(): VoiceProvider {
   if (voice) return voice;
   const e = env();
-  voice = e.VOICE_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN
-    ? new TwilioVoiceProvider(e.TWILIO_ACCOUNT_SID, e.TWILIO_AUTH_TOKEN, { apiKeySid: e.TWILIO_API_KEY_SID, apiKeySecret: e.TWILIO_API_KEY_SECRET, twimlAppSid: e.TWILIO_TWIML_APP_SID })
+  const creds = e.VOICE_PROVIDER === "twilio" ? twilioCredentials(e) : null;
+  voice = creds
+    ? new TwilioVoiceProvider(creds.accountSid, e.TWILIO_AUTH_TOKEN, { auth: creds, apiKeySid: e.TWILIO_API_KEY_SID, apiKeySecret: e.TWILIO_API_KEY_SECRET, twimlAppSid: e.TWILIO_TWIML_APP_SID })
     : mock;
   return voice;
 }

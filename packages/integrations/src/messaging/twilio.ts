@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { twilioBasicAuth } from "../twilio-auth";
 import type { SmsProvider, OutboundSms, SendResult, WebhookRequest, InboundMessage, StatusUpdate } from "./types";
 
 /**
@@ -10,8 +11,9 @@ export class TwilioSmsProvider implements SmsProvider {
   readonly name = "twilio";
   constructor(
     private readonly accountSid: string,
-    private readonly authToken: string,
-    private readonly opts: { messagingServiceSid?: string; fromNumber?: string; fetchImpl?: typeof fetch } = {},
+    /** The auth token signs and verifies webhooks. Without it verifyWebhook returns false. */
+    private readonly authToken: string | undefined,
+    private readonly opts: { auth?: { username: string; password: string }; messagingServiceSid?: string; fromNumber?: string; fetchImpl?: typeof fetch } = {},
   ) {}
 
   async sendSms(message: OutboundSms): Promise<SendResult> {
@@ -21,7 +23,7 @@ export class TwilioSmsProvider implements SmsProvider {
     if (message.from ?? this.opts.fromNumber) params.set("From", (message.from ?? this.opts.fromNumber)!);
     else if (this.opts.messagingServiceSid) params.set("MessagingServiceSid", this.opts.messagingServiceSid);
     if (message.statusCallbackUrl) params.set("StatusCallback", message.statusCallbackUrl);
-    const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString("base64");
+    const auth = twilioBasicAuth(this.opts.auth?.username ?? this.accountSid, this.opts.auth?.password ?? this.authToken ?? "");
     const res = await (this.opts.fetchImpl ?? fetch)(`https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`, {
       method: "POST", headers: { authorization: `Basic ${auth}`, "content-type": "application/x-www-form-urlencoded" }, body: params.toString(),
     });
@@ -32,7 +34,7 @@ export class TwilioSmsProvider implements SmsProvider {
 
   verifyWebhook(req: WebhookRequest): boolean {
     const signature = req.headers["x-twilio-signature"] ?? req.headers["X-Twilio-Signature"];
-    if (!signature) return false;
+    if (!signature || !this.authToken) return false;
     const params = req.form ?? Object.fromEntries(new URLSearchParams(req.rawBody));
     const data = req.url + Object.keys(params).sort().map((k) => k + params[k]).join("");
     const expected = createHmac("sha1", this.authToken).update(data).digest("base64");

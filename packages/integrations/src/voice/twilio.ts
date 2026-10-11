@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { TwilioSmsProvider } from "../messaging/twilio";
+import { twilioBasicAuth } from "../twilio-auth";
 import type { WebhookRequest } from "../messaging/types";
 import { mapTwilioCallStatus, type VoiceProvider, type StartCallInput, type StartCallResult, type CallStatusUpdate } from "./types";
 
@@ -33,8 +34,8 @@ export class TwilioVoiceProvider implements VoiceProvider {
   private readonly signer: TwilioSmsProvider;
   constructor(
     private readonly accountSid: string,
-    private readonly authToken: string,
-    private readonly opts: { apiKeySid?: string; apiKeySecret?: string; twimlAppSid?: string; fetchImpl?: typeof fetch; now?: () => number } = {},
+    private readonly authToken: string | undefined,
+    private readonly opts: { auth?: { username: string; password: string }; apiKeySid?: string; apiKeySecret?: string; twimlAppSid?: string; fetchImpl?: typeof fetch; now?: () => number } = {},
   ) {
     this.signer = new TwilioSmsProvider(accountSid, authToken);
   }
@@ -63,7 +64,7 @@ export class TwilioVoiceProvider implements VoiceProvider {
       for (const event of ["initiated", "ringing", "answered", "completed"]) params.append("StatusCallbackEvent", event);
     }
     // TODO(phase2): the status callback reports the agent leg. Add a Dial action URL to record the lead leg result (DialCallStatus), and decide on call recording and its consent notice.
-    const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString("base64");
+    const auth = twilioBasicAuth(this.opts.auth?.username ?? this.accountSid, this.opts.auth?.password ?? this.authToken ?? "");
     const res = await (this.opts.fetchImpl ?? fetch)(`https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Calls.json`, {
       method: "POST", headers: { authorization: `Basic ${auth}`, "content-type": "application/x-www-form-urlencoded" }, body: params.toString(),
     });

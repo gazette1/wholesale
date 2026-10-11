@@ -5,3 +5,4 @@ export * from "./voice";
 export * from "./judgment";
 export * from "./storage";
 export * from "./webhooks";
+export * from "./twilio-auth";

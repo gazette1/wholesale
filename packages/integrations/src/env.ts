@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { twilioCredentials } from "./twilio-auth";
 
 /**
  * Every provider key is read here and nowhere else. Missing keys select the
@@ -58,10 +59,12 @@ export function providerStatus() {
   const e = env();
   return {
     propertyData: e.PROPERTY_DATA_PROVIDER === "realestateapi" && e.REALESTATEAPI_KEY ? "realestateapi" : "mock",
-    sms: e.MESSAGING_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN ? "twilio" : "mock",
-    voice: e.VOICE_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN ? "twilio" : "mock",
+    sms: e.MESSAGING_PROVIDER === "twilio" && twilioCredentials(e) ? "twilio" : "mock",
+    voice: e.VOICE_PROVIDER === "twilio" && twilioCredentials(e) ? "twilio" : "mock",
+    /** Twilio signs webhooks with the auth token, so an API key alone cannot verify them. */
+    webhookVerification: e.TWILIO_AUTH_TOKEN ? "ok" : "auth_token_missing",
     /** Browser calling also needs an API key and a TwiML app. Without them Twilio voice places bridge calls only. */
-    voiceBrowser: Boolean(e.VOICE_PROVIDER === "twilio" && e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_API_KEY_SID && e.TWILIO_API_KEY_SECRET && e.TWILIO_TWIML_APP_SID),
+    voiceBrowser: Boolean(e.VOICE_PROVIDER === "twilio" && twilioCredentials(e) && e.TWILIO_API_KEY_SID && e.TWILIO_API_KEY_SECRET && e.TWILIO_TWIML_APP_SID),
     email: e.EMAIL_PROVIDER === "resend" && e.RESEND_API_KEY ? "resend" : "mock",
     judgment: e.JUDGMENT_PROVIDER === "typesafe" && e.TYPESAFE_API_KEY ? "typesafe" : "mock",
     database: e.DATABASE_URL ? "postgres" : "pglite",
