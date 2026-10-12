@@ -224,6 +224,9 @@ export function TaskWindow(props: { data: TaskWindowData; mode: "internal" | "ex
 
   const p = data.permissions;
   const visibleFields = data.section.fields.filter((f) => evaluation.fieldVisible[f.key] !== false);
+  // Inputs stay disabled until the page hydrates, so nothing typed into the server HTML is lost.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const editable = p.canEdit;
   const taskStatus = TASK_STATUS[data.task.status];
   const subStatus = SUBMISSION_STATUS[data.submission.status];
@@ -277,7 +280,7 @@ export function TaskWindow(props: { data: TaskWindowData; mode: "internal" | "ex
               {visibleFields.map((f) => (
                 <FieldInput key={f.key} field={f} value={values[f.key]} answers={values} labels={labels} team={team} mode={mode}
                   required={evaluation.fieldRequired[f.key] === true} error={errors[f.key]} fileNames={fileNames} fileUrls={fileUrls}
-                  disabled={!editable || f.readOnly || (external && f.type === "person")}
+                  disabled={!hydrated || !editable || f.readOnly || (external && f.type === "person")}
                   onChange={(v, o) => change(f, v, o)} onBlur={() => blur(f)} onUpload={upload} />
               ))}
               {p.canComplete ? (

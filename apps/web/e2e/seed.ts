@@ -1,4 +1,4 @@
-import { createPgliteDb, migrate, dealPackages, dealSubmissions } from "@dealcalc/db";
+import { createPgliteDb, migrate, dealPackages, dealSubmissions, profiles, formPurgeRequests } from "@dealcalc/db";
 import { seed } from "../../../packages/db/src/seed";
 
 async function main() {
@@ -17,6 +17,10 @@ async function main() {
     await db.insert(dealSubmissions).values({ orgId: data.orgId, analysisId: data.analysisIds[0]!, buyerId: data.buyerIds[0]!, packageId: pkg!.id,
       token: expired ? "e2e_expired_buyer_token" : "e2e_tracked_buyer_token" });
   }
+  // A second admin and a pending purge request they made, so the first admin can approve it in the UI.
+  const [second] = await db.insert(profiles).values({ orgId: data.orgId, fullName: "Second Admin", email: "second.admin@example.com", role: "admin", isFormAdmin: true }).returning();
+  const purgeBuyerId = data.buyerIds[data.buyerIds.length - 1]!;
+  await db.insert(formPurgeRequests).values({ orgId: data.orgId, targetType: "buyer", targetId: purgeBuyerId, requestReference: "E2E seeded request", requestedBy: second!.id });
   await db.$client.close();
 }
 main().catch((error) => { console.error(error); process.exit(1); });

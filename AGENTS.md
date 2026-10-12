@@ -30,9 +30,19 @@ An acquisitions CRM with a deal analyzer for a residential wholesale and flip bu
 | `apps/desktop` | Tauri 2 scaffold. `src-tauri/tauri.conf.json`, `src-tauri/src/main.rs` (reads `DEALCALC_APP_URL` at compile time), `shell/` frontend folder. Never built: Rust is not installed on this machine. |
 | `packages/engine` | Pure TypeScript calculators ported from the workbook, golden tests against `spec/golden`. `src/project/` is the opt in second model. |
 | `packages/db` | Drizzle schema in `src/schema`, SQL in `migrations`, embedded copy in `src/migrations.generated.ts`, seed, PGlite fallback. |
+| `packages/forms` | Workflow Forms rules, pure TypeScript with vitest: definition schema (`definition.ts`, the contract every layer reads), seeded templates, rule engine, validation, roles, due dates, merge tags, answer migration. |
 | `packages/integrations` | Provider boundaries with mock adapters: `property-data`, `messaging`, `voice`, `judgment`, `storage`, `webhooks`. All env access is in `src/env.ts`. |
 | `spec/` | Workbook extraction and golden fixtures. NEVER hand edit. |
 | `docs/` | Architecture, decisions, plan, parity, integrations. |
+
+## 4a. What was built on 2026-10-12: Workflow Forms, release 1
+
+Plan: `docs/WORKFLOW_FORMS_PLAN.md`. Status table: `docs/IMPLEMENTATION_PLAN.md`, "Workflow Forms, release 1".
+- Database: `packages/db/src/schema/forms.ts`, migration `0009_workflow_forms.sql` (nine tables plus `profiles.is_form_admin`, `notify_by`, `mobile_phone`, `documents.submission_id`, `alerts.form_task_id`, new enum values), hand written `0010_rls_forms.sql` (never run), `src/seed/forms.ts` seeding three templates from `bootstrap()` and `seed()`. Applied on local PGlite only.
+- `packages/forms`: the whole package. `ENGINE_VERSION` and `packages/engine` are untouched.
+- Web server side: `lib/services/forms.ts` (lifecycle), `form-access.ts` (invites, public links, codes, external sessions, purge), `form-files.ts`, `form-notifications.ts` (and the cron pass), `lib/data/forms.ts`, `lib/data/form-purge.ts`, `lib/actions/forms.ts`, `form-external.ts`, `form-files.ts`, `form-purge.ts`, `lib/forms/*`, `lib/upload-checks.ts` (moved out of `documents.ts`, same behavior). `Session` gains `isFormAdmin`; `can()` gains `form:build` and `form:fill`.
+- Web screens: `app/(app)/forms/**`, `app/fill/[token]/**`, `components/forms/**`, Forms tab on leads and buyers, Form tasks section on `/tasks`, sidebar entry and unread badge.
+- Playwright: `apps/web/e2e/forms.spec.ts` (seven scenarios); `e2e/server.cjs` copies mock one-time code lines to `.pglite/e2e-codes.log`; `e2e/seed.ts` adds a second admin and a pending purge request.
 
 ## 4. What was built on 2026-09-21
 

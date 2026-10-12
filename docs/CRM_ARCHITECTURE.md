@@ -178,8 +178,15 @@ Golden tests from `spec/golden` stay green. New modules get fixtures from hand c
 | `/settings` | Team and roles, pipeline stages, tags, lead sources, integrations (keys stored as env, status only), branding | admin |
 | `/api/webhooks/twilio/sms`, `/api/webhooks/twilio/status`, `/api/webhooks/resend` | Inbound messages and delivery status | provider signed |
 | `/api/cron/dispatch` | Sends due steps and tasks | cron secret |
+| `/forms` | Workflow Forms library; `/forms/[id]` editor; `/forms/[id]/submissions` report and CSV; `/forms/purge` two admin purge | any reads, form admins build, admins purge |
+| `/forms/tasks/[id]` | Task window for one section of one submission | assignees and form admins |
+| `/fill/[token]` | External fill page after a one-time code | public, token and code |
 
 Mobile: `/pipeline` collapses to a stage picker plus card list, `/leads/[id]` stacks header, quick actions bar (call, text, email, task), then tabs.
+
+### Workflow Forms
+
+Release 1 of the workflow forms spec (`docs/WORKFLOW_FORMS_SPEC.md`, adapted in `docs/WORKFLOW_FORMS_PLAN.md`). A form is a definition JSON (sections, fields, roles, rules) checked by the pure `packages/forms` package. Admins edit a draft on `forms.draft_definition`; publishing freezes it into `form_versions` and migrates every submission's answers by stable field key, with removed answers kept in `form_events`. One `form_submissions` table holds every form's answers as JSON keyed by field key, with the subject (a lead or a buyer) fixed at start. Each open section is a `form_tasks` row with assignees in `form_task_assignees`; roles resolve to people from a person field, the lead owner, the starter, a role group, a fixed profile, or an invited outside person. Every write goes through `lib/services/forms.ts`, which logs to `form_events` and to the lead's activities. Outside people reach `/fill/[token]`: the token and the one-time code are stored only as sha256 hashes, codes expire in 10 minutes with attempt and send limits, and the task window data for an outside person carries only fields marked visible to external people in their own sections. Form admin is `profiles.is_form_admin`, true for admins. Notifications use the profile's `notify_by` and the existing messaging boundary; due soon, overdue, and escalation notices are `alerts` rows raised by the cron pass. Nothing is deleted except through the two admin purge.
 
 ## 7. Permissions
 

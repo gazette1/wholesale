@@ -70,6 +70,26 @@ The deferred Mac app features have their own skeleton, the project model. See "P
 
 The project model remains a preview. Hosted migrations, deployment, provider calls, desktop builds, and CI changes are outside this local verification pass.
 
+## Workflow Forms, release 1
+
+Built 2026-10-12 from `docs/WORKFLOW_FORMS_PLAN.md`. Verified locally on PGlite with mock providers. Nothing is applied to Supabase or deployed.
+
+| Item | State | What is left |
+|---|---|---|
+| Schema: forms, versions, submissions, tasks, assignees, external parties, comments, events, purge requests (migration 0009) | Implemented, db tests cover the tables and seeded templates | Apply 0009 and 0010 to Supabase after review |
+| Row level security (`0010_rls_forms.sql`) | Written by hand | Has never run anywhere; read it before applying |
+| `packages/forms`: definition schema, rule engine, validation, roles, due dates, merge tags, version migration | Implemented, 119 tests | Time of day windows on date and time fields are not checked |
+| Seeded templates: seller intake, property walkthrough, contractor bid | Seeded by `bootstrap()` and the demo seed | Existing workspaces need them created from the library (New form, Start from a template) |
+| Library, editor, preview, publish, versions | Implemented, publish checked in a browser and by Playwright | Rule values for dates and text are typed in; no live co-editing |
+| Submissions on leads and buyers, task window, autosave, handoff, approvals with send back, reassign, snooze, comments with files and mentions | Implemented, Playwright scenarios 2 to 4 | Steps are separate writes, not one transaction |
+| Report table, summary, CSV | Implemented | Saved views for the report table are not built |
+| My tasks on the follow ups page, unread count in the sidebar | Implemented | |
+| External fill page with one-time codes, invites, public links, uploads | Implemented, Playwright scenario 5 including a buyer subject confidentiality check | Live Twilio and Resend delivery untested |
+| Version publish migrates every submission | Implemented, Playwright scenario 6 | |
+| Notifications, due soon and overdue alerts, escalation (cron pass) | Implemented with mock providers | Live delivery untested; escalation goes to admins after 48 hours |
+| Two admin purge (`/forms/purge`) | Implemented, Playwright scenario 7 | Twilio message records are not deleted (needs live keys); other people's history entries that quote purged values are not scrubbed |
+| Release 2 items (tables, lookups, calculated fields, signatures, automations, API) | Not started | See the plan |
+
 ## Local verification completed 2026-09-21
 
 - Installed dependencies with the repository-pinned pnpm 10.34.5. A subsequent frozen-lockfile install passed.

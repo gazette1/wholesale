@@ -9,6 +9,7 @@ Internal system for a residential wholesale and flip operation: seller lead pipe
 | `apps/web` | Next.js 15 app. Every screen, server action, webhook, and the PDF renderer. No math outside the engine. |
 | `packages/engine` | Pure TypeScript calculators ported from the workbook with golden tests. Runs in the browser and on the server. |
 | `packages/db` | Drizzle schema, SQL migrations, seed data, PGlite fallback for local work. |
+| `packages/forms` | Workflow Forms rules in pure TypeScript: the form definition schema, rule engine, validation, role resolution, due dates, merge tags, and version migration of answers. No I/O. |
 | `packages/integrations` | Provider boundaries with real and mock adapters: RealEstateAPI, Twilio SMS and voice, Resend, TypeSafe Jev, file storage. |
 | `spec/` | Workbook extraction, formula spec, anomalies, golden fixtures. Never hand edited. |
 | `docs/` | Architecture, decisions, CRM proposal, integrations guide, implementation plan, and `MAC_PARITY.md` (what came over from the Mac app, what did not, and why). |
@@ -105,7 +106,7 @@ A `.dmg` can only be built on macOS, so the partner's Mac produces that one. Aut
 pnpm test
 ```
 
-Engine: 135 tests. The golden and edge tests pin every workbook calculator to the spreadsheet's cached values; the rest cover the additions that are not in the workbook (quick offer tiers, comparable average, seller value score, rehab source, loan schedule, validation, the deal runner, and the project model, including a test that the workbook outputs are identical with the project model on and off). Database: 8 tests covering schema, seed, and the migration ledger on PGlite. Integrations: provider mapping, signature verification, judgment parsing, CSV, webhook signing, URL policy, lead payload parsing, and the voice boundary (70 tests).
+Engine: 140 tests. The golden and edge tests pin every workbook calculator to the spreadsheet's cached values; the rest cover the additions that are not in the workbook (quick offer tiers, comparable average, seller value score, rehab source, loan schedule, validation, the deal runner, and the project model, including a test that the workbook outputs are identical with the project model on and off). Database: 20 tests covering schema, seed, the migration ledger, workspace bootstrap, and the Workflow Forms tables and seeded templates on PGlite. Integrations: provider mapping, signature verification, judgment parsing, CSV, webhook signing, URL policy, lead payload parsing, and the voice boundary (79 tests). Forms: 119 tests covering the definition schema, both rule guards (a rule may only read earlier fields; no cycles), operators, validation, role resolution, business day due dates, merge tags, and answer migration between versions.
 
 ## Writing rules for documents in this repo
 

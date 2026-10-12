@@ -21,6 +21,7 @@ const fail = (error: string): Fail => ({ ok: false, error });
 /** Pages that show form state. Dynamic segments are revalidated as a group because the lead or buyer is not known here. */
 function touch(opts: { formId?: string; taskId?: string } = {}): void {
   revalidatePath("/forms");
+  revalidatePath("/forms/purge");
   if (opts.formId) revalidatePath(`/forms/${opts.formId}`);
   if (opts.taskId) revalidatePath(`/forms/tasks/${opts.taskId}`);
   revalidatePath("/forms/tasks/[id]", "page");
@@ -303,6 +304,7 @@ export async function requestFormPurge(input: { targetType: "external_party" | "
   return guard(session, "admin", "Could not record the purge request.", async () => {
     const res = await requestPurge(actorFromSession(session), { ...input, requestReference: reference });
     await audit(session, { entityType: "form_purge", entityId: res.requestId, action: "request", after: { targetType: input.targetType, targetId: input.targetId } });
+    touch();
     return { ok: true as const, id: res.requestId, message: "Purge requested. A second admin must approve it." };
   });
 }
@@ -324,6 +326,7 @@ export async function cancelFormPurge(requestId: string): Promise<ActionResult> 
   return guard(session, "admin", "Could not cancel the request.", async () => {
     await cancelPurge(actorFromSession(session), requestId);
     await audit(session, { entityType: "form_purge", entityId: requestId, action: "cancel" });
+    touch();
     return { ok: true as const, message: "Purge request cancelled." };
   });
 }
