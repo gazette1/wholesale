@@ -33,7 +33,7 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHeader title="Forms" description={`${rows.length} ${rows.length === 1 ? "form" : "forms"}`} />
+      <PageHeader title="Forms" description={`${rows.length} ${rows.length === 1 ? "form" : "forms"}`} actions={session.role === "admin" ? <Link href="/forms/purge" className="text-[13px] text-fg-2 underline">Privacy purge</Link> : undefined} />
       {canBuild ? (
         <div className="flex flex-wrap items-start gap-2 mb-3">
           <NewFormPanel forms={all.map((f) => ({ id: f.id, name: f.name }))} templates={FORM_TEMPLATES.map((t) => ({ slug: t.slug, name: t.name }))} />
