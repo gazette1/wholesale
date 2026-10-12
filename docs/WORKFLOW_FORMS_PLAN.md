@@ -107,10 +107,10 @@ Tables (line items), lookups into leads, buyers, and cost defaults, calculated f
 
 The earlier build has a rule engine, a validator, a version migration, field type definitions, and three end to end suites. Once its code is located, the plan is to port the pure parts (definition schema, rules, validation, migration, merge tags) into `packages/forms` with their tests, and to rewrite the UI and data layer against this app. Anything that reached Twenty's Metadata API or front component sandbox is dropped.
 
-## Open decisions before the schema pass
+## Decisions, settled 2026-10-12
 
-1. Subjects: leads and buyers in release 1, with contacts later, or all three now.
-2. Whether the form admin capability is its own role or a flag on a profile. Recommendation: a boolean on `profiles`, since the role enum drives row level security elsewhere.
-3. Whether external people may upload files in release 1. The spec's earlier build did not have it. Recommendation: yes, since the documents boundary already exists and the risk is the same as the lead page upload.
-4. The first three forms Ous wants to run, so release 1 is tested on real work. Candidates from the pipeline: seller intake, property walkthrough, contractor bid, closing checklist, buyer onboarding.
-5. Where My tasks lives: inside the existing follow ups page or its own page.
+1. Subjects in release 1: leads and buyers. Contacts come later.
+2. Form admin is a boolean on `profiles` (`is_form_admin`), true for admins by default. The role enum is unchanged.
+3. External people may upload files in release 1, through the existing documents boundary with the same type and size checks as the lead page.
+4. The first three forms, built as seeded templates so release 1 is tested on real work: seller intake, property walkthrough, contractor bid. Closing checklist and buyer onboarding follow.
+5. My tasks joins the existing follow ups page as its own section, not a new page.
