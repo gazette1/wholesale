@@ -101,7 +101,9 @@ export async function getFormDetail(orgId: string, formId: string): Promise<Form
     .from(formVersions).leftJoin(profiles, eq(profiles.id, formVersions.publishedBy))
     .where(and(eq(formVersions.formId, formId), eq(formVersions.orgId, orgId))).orderBy(desc(formVersions.number));
   const latest = versions.find((v) => v.id === form.latestVersionId);
+  const published = form.latestVersionId ? await db.query.formVersions.findFirst({ where: and(eq(formVersions.id, form.latestVersionId), eq(formVersions.orgId, orgId)) }) : undefined;
   return {
+    publishedDefinition: published?.definition ?? null,
     id: form.id, name: form.name, description: form.description, category: form.category, status: form.status as FormStatus, ownerId: form.ownerId, ownerName: owner?.fullName ?? null,
     settings: settingsOf(form.settings), templateSlug: form.templateSlug, draftDefinition: form.draftDefinition, latestVersionId: form.latestVersionId,
     latestVersionNumber: latest?.number ?? null, versions: versions.map((v) => ({ id: v.id, number: v.number, publishedAt: v.publishedAt.toISOString(), publishedByName: v.by ?? null })),
@@ -131,7 +133,7 @@ async function buildRows(db: Db, orgId: string, subs: (typeof formSubmissions.$i
   const starterIds = [...new Set(subs.map((s) => s.startedBy).filter((x): x is string => !!x))];
   const [formRows, versionRows, tasks, leadRows, buyerRows, starters] = await Promise.all([
     db.select({ id: forms.id, name: forms.name }).from(forms).where(and(eq(forms.orgId, orgId), inArray(forms.id, formIds))),
-    db.select({ id: formVersions.id, number: formVersions.number }).from(formVersions).where(and(eq(formVersions.orgId, orgId), inArray(formVersions.id, versionIds))),
+    db.select({ id: formVersions.id, number: formVersions.number, definition: formVersions.definition }).from(formVersions).where(and(eq(formVersions.orgId, orgId), inArray(formVersions.id, versionIds))),
     db.select().from(formTasks).where(and(eq(formTasks.orgId, orgId), inArray(formTasks.submissionId, subIds), isNull(formTasks.archivedAt))),
     leadIds.length ? db.select({ id: leads.id, a: properties.addressLine1, c: properties.city, s: properties.state }).from(leads).innerJoin(properties, eq(properties.id, leads.propertyId)).where(and(eq(leads.orgId, orgId), inArray(leads.id, leadIds))) : Promise.resolve([]),
     buyerIds.length ? db.select().from(buyers).where(and(eq(buyers.orgId, orgId), inArray(buyers.id, buyerIds))) : Promise.resolve([]),
@@ -150,6 +152,7 @@ async function buildRows(db: Db, orgId: string, subs: (typeof formSubmissions.$i
   }
   const formName = new Map(formRows.map((f) => [f.id, f.name]));
   const versionNumber = new Map(versionRows.map((v) => [v.id, v.number]));
+  const sectionTitles = new Map(versionRows.map((v) => [v.id, new Map(((v.definition.sections ?? []) as { key?: string; title?: string }[]).map((x) => [String(x.key), String(x.title ?? x.key)]))]));
   const leadLabel = new Map(leadRows.map((l) => [l.id, `${l.a}, ${l.c}, ${l.s}`]));
   const buyerLabel = new Map(buyerRows.map((b) => [b.id, [b.firstName, b.lastName].filter(Boolean).join(" ").trim() || b.company || "Buyer"]));
   const starterName = new Map(starters.map((s) => [s.id, s.name]));
@@ -157,7 +160,7 @@ async function buildRows(db: Db, orgId: string, subs: (typeof formSubmissions.$i
     const own = tasks.filter((t) => t.submissionId === s.id);
     const order = new Map<string, number>();
     const taskStates: SubmissionTaskState[] = own.sort((a, b) => (a.openedAt?.getTime() ?? Infinity) - (b.openedAt?.getTime() ?? Infinity)).map((t) => ({
-      taskId: t.id, sectionKey: t.sectionKey, roleKey: t.roleKey, status: t.status, dueAt: iso(t.dueAt), snoozedUntil: iso(t.snoozedUntil), completedAt: iso(t.completedAt),
+      taskId: t.id, sectionKey: t.sectionKey, sectionTitle: sectionTitles.get(s.versionId)?.get(t.sectionKey) ?? t.sectionKey, roleKey: t.roleKey, status: t.status, dueAt: iso(t.dueAt), snoozedUntil: iso(t.snoozedUntil), completedAt: iso(t.completedAt),
       approvalOutcome: t.approvalOutcome, assigneeNames: namesByTask.get(t.id) ?? [],
     }));
     void order;

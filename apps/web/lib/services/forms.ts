@@ -935,9 +935,13 @@ export async function loadTaskWindow(actor: FormActor, taskId: string): Promise<
     profileId: a.profileId, externalPartyId: actor.kind === "profile" ? a.externalPartyId : null, completedAt: isoOrNull(a.completedAt),
   }));
 
-  const docIds = [...new Set(comments.flatMap((c) => c.documentIds))];
-  const docRows = docIds.length ? await db.select({ id: documents.id, filename: documents.filename }).from(documents).where(and(eq(documents.orgId, actor.orgId), inArray(documents.id, docIds))) : [];
+  const fileFieldIds = [...sectionFields, ...earlier.flatMap((s) => s.fields)].filter((f) => f.type === "file_upload")
+    .flatMap((f) => (Array.isArray(answers[f.key]) ? (answers[f.key] as unknown[]) : []).filter((v): v is string => typeof v === "string" && isUuid(v)));
+  const docIds = [...new Set([...comments.flatMap((c) => c.documentIds), ...fileFieldIds])];
+  const docRows = docIds.length ? await db.select({ id: documents.id, filename: documents.filename, storagePath: documents.storagePath }).from(documents).where(and(eq(documents.orgId, actor.orgId), eq(documents.submissionId, tc.sub.id), inArray(documents.id, docIds))) : [];
   const docName = new Map(docRows.map((d) => [d.id, d.filename]));
+  // Download links go through the signed in files route, so outside people get names only.
+  const files: TaskWindowData["files"] = Object.fromEntries(docRows.map((d) => [d.id, { name: d.filename, url: actor.kind === "profile" ? `/api/files/${d.storagePath.split("/").map(encodeURIComponent).join("/")}` : null }]));
   const commentViews: TaskCommentView[] = comments.map((c) => ({
     id: c.id, body: c.body, createdAt: c.createdAt.toISOString(),
     authorKind: c.authorId ? "profile" : c.authorExternalPartyId ? "external" : "unknown",
@@ -995,6 +999,6 @@ export async function loadTaskWindow(actor: FormActor, taskId: string): Promise<
     section: { key: tc.section.key, title: tc.section.title, description: tc.section.description ?? null, needsApproval: tc.section.needsApproval, allowExternal: tc.section.allowExternal, fields: sectionFields },
     answers, earlierSections: earlier,
     evaluation: restrictEvaluation(ev, [...visibleKeys]),
-    assignees, comments: commentViews, history, permissions, sendBackTargets,
+    assignees, comments: commentViews, history, permissions, sendBackTargets, files,
   };
 }

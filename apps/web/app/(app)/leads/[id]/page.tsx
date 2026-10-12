@@ -19,6 +19,7 @@ import { AnalyzerTab } from "./tabs/analyzer";
 import { OffersTab } from "./tabs/offers";
 import { DocumentsTab } from "./tabs/documents";
 import { CallsTab } from "./tabs/calls";
+import { FormsTab } from "./tabs/forms";
 import { runEnrichment, deleteLead } from "@/lib/actions/leads";
 import type { ActionResult } from "@/lib/actions/leads";
 import { ActionButton, SubmitOnce } from "@/components/ui/action-form";
@@ -34,7 +35,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const { id } = await params;
   const { tab: tabParam } = await searchParams;
   // An unknown tab name falls back to the overview instead of an empty page.
-  const tab = ["overview", "activity", "messages", "calls", "report", "analyzer", "offers", "documents"].includes(tabParam ?? "") ? tabParam! : "overview";
+  const tab = ["overview", "activity", "messages", "calls", "report", "analyzer", "offers", "documents", "forms"].includes(tabParam ?? "") ? tabParam! : "overview";
   const detail = await getLead(session.orgId, id);
   if (!detail) notFound();
   const [stages, team, sources, tagList, templates, campaigns] = await Promise.all([listStages(session.orgId), listProfiles(session.orgId), listSources(session.orgId), listTags(session.orgId), templatesFor(session.orgId), listCampaigns(session.orgId)]);
@@ -47,7 +48,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const writable = can(session, "lead:write");
   const tabs = [
     { key: "overview", label: "Overview" }, { key: "activity", label: "Activity", count: detail.activities.length }, { key: "messages", label: "Messages", count: detail.messages.length }, { key: "calls", label: "Calls" },
-    { key: "report", label: "Property report" }, { key: "analyzer", label: "Analyzer", count: detail.analyses.length }, { key: "offers", label: "Offers", count: detail.offers.length }, { key: "documents", label: "Documents", count: detail.documents.length },
+    { key: "report", label: "Property report" }, { key: "analyzer", label: "Analyzer", count: detail.analyses.length }, { key: "offers", label: "Offers", count: detail.offers.length }, { key: "documents", label: "Documents", count: detail.documents.length }, { key: "forms", label: "Forms" },
   ].map((t) => ({ ...t, href: `/leads/${id}?tab=${t.key}` }));
 
   return (
@@ -90,6 +91,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
         ) : null}
         {tab === "analyzer" ? <AnalyzerTab detail={detail} canWrite={can(session, "analysis:write")} /> : null}
         {tab === "offers" ? <OffersTab detail={detail} canWrite={writable} /> : null}
+        {tab === "forms" ? <FormsTab session={session} leadId={id} /> : null}
         {tab === "documents" ? <DocumentsTab detail={detail} canWrite={writable} sessionProfileId={session.profileId} isAdmin={session.role === "admin"} /> : null}
       </div>
       {session.role === "admin" ? (

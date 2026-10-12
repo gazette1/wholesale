@@ -15,6 +15,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { money, fullName, shortDate, percent } from "@/lib/utils";
 import { SuggestCriteria } from "./suggest";
 import { BuyerDocuments } from "./documents";
+import { BuyerForms } from "./forms";
 import { Button } from "@/components/ui/button";
 
 export const metadata = { title: "Buyer" };
@@ -117,6 +118,10 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
           </Card>
         </div>
       </div>
+      <section className="mt-4 space-y-3" aria-labelledby="buyer-forms-heading">
+        <h2 id="buyer-forms-heading" className="text-sm font-semibold">Forms</h2>
+        <BuyerForms session={session} buyerId={id} />
+      </section>
       <div className="mt-4">
         <BuyerDocuments buyerId={id} docs={docs} canWrite={writable} sessionProfileId={session.profileId} isAdmin={session.role === "admin"} />
       </div>

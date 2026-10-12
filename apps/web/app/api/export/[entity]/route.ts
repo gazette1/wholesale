@@ -4,6 +4,8 @@ import { leads, properties, contacts, pipelineStages, leadSources, profiles, buy
 import { recordsToCsv, LEAD_CSV_TEMPLATE_COLUMNS, BUYER_CSV_TEMPLATE_COLUMNS } from "@dealcalc/integrations";
 import { getDb } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { isUuid } from "@/lib/safe";
+import { formSubmissionsCsv } from "@/lib/data/forms";
 import { parseRangeKey, reportRange, speedToContact, conversionBySource, costPerContract, offersToContracts, marketAnalytics, type MarketRow } from "@/lib/data/reports";
 
 export const dynamic = "force-dynamic";
@@ -121,5 +123,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return csvResponse(`${entity.replace(".csv", "")}-${stamp()}.csv`, recordsToCsv(columns, records, { bom: true }));
   }
 
-  return new NextResponse("Not found. Use leads.csv, buyers.csv, analyses.csv, or a reports-*.csv entity.", { status: 404 });
+  if (entity === "form_submissions" || entity === "form_submissions.csv") {
+    const formId = request.nextUrl.searchParams.get("formId");
+    if (!formId || !isUuid(formId)) return new NextResponse("Add ?formId= with a valid form id.", { status: 400 });
+    const csv = await formSubmissionsCsv(session.orgId, formId);
+    if (csv === null) return new NextResponse("Form not found.", { status: 404 });
+    return csvResponse(`form-submissions-${stamp()}.csv`, csv);
+  }
+
+  return new NextResponse("Not found. Use leads.csv, buyers.csv, analyses.csv, a reports-*.csv entity, or form_submissions with ?formId=.", { status: 404 });
 }

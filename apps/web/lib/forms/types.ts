@@ -44,6 +44,8 @@ export type FormDetail = {
   settings: FormSettings;
   templateSlug: string | null;
   draftDefinition: unknown;
+  /** The latest published definition, or null before the first publish. */
+  publishedDefinition: unknown;
   latestVersionId: string | null;
   latestVersionNumber: number | null;
   versions: FormVersionRow[];
@@ -54,6 +56,7 @@ export type FormDetail = {
 export type SubmissionTaskState = {
   taskId: string;
   sectionKey: string;
+  sectionTitle: string;
   roleKey: string | null;
   status: TaskStatus;
   dueAt: string | null;
@@ -223,4 +226,6 @@ export type TaskWindowData = {
   permissions: TaskPermissions;
   /** Earlier sections an approver may send this task back to. */
   sendBackTargets: { key: string; title: string }[];
+  /** Names of files in visible answers and comments. url is null for outside people. */
+  files: Record<string, { name: string; url: string | null }>;
 };

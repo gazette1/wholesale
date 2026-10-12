@@ -16,6 +16,8 @@ import { dayKey } from "@/lib/utils";
 import { CheckSquare } from "lucide-react";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { isUuid } from "@/lib/safe";
+import { getMyFormTasks } from "@/lib/data/forms";
+import { MyFormTasks } from "@/components/forms/task-window/my-form-tasks";
 
 export const metadata = { title: "Follow ups" };
 
@@ -32,6 +34,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     .from(tasks).leftJoin(profiles, eq(tasks.assignedTo, profiles.id)).leftJoin(leads, eq(tasks.leadId, leads.id)).leftJoin(properties, eq(leads.propertyId, properties.id)).leftJoin(contacts, eq(leads.primaryContactId, contacts.id))
     .where(and(...where)).orderBy(asc(tasks.doneAt), asc(tasks.dueAt)).limit(300);
   const team = await listProfiles(session.orgId);
+  const formTasks = await getMyFormTasks(session.orgId, session.profileId);
   const now = Date.now();
   const groups = [
     { key: "overdue", label: "Overdue", rows: rows.filter((r) => !r.t.doneAt && r.t.dueAt && r.t.dueAt.getTime() < now && !sameDay(r.t.dueAt)) },
@@ -48,6 +51,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           <button type="submit" className="text-[13px] text-brand">Apply</button>
         </form>
       } />
+      <MyFormTasks tasks={formTasks} />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4 min-w-0">
           {groups.length === 0 ? <EmptyState icon={CheckSquare} title="All caught up" description="No follow ups due." /> : groups.map((g) => (
