@@ -7,43 +7,8 @@ import { getDb } from "../db";
 import { requireSession, requireCan } from "../auth";
 import { audit } from "../audit";
 import { friendlyError, isUuid } from "../safe";
+import { checkUploadFile, checkUploadBytes, displayFilename } from "../upload-checks";
 import type { ActionResult } from "./leads";
-
-const MAX_BYTES = 25 * 1024 * 1024;
-
-const startsWith = (bytes: number[], at = 0) => (b: Buffer) => bytes.every((v, i) => b[at + i] === v);
-const ascii = (text: string, at = 0) => startsWith(Array.from(text, (c) => c.charCodeAt(0)), at);
-const looksLikeText = (b: Buffer) => !b.subarray(0, 4096).includes(0);
-const isZip = startsWith([0x50, 0x4b, 0x03, 0x04]);
-
-/**
- * The allow list, keyed by extension. `mime` is what gets stored; `accepts` is what a browser may report for that extension
- * (Windows reports a .csv as an Excel file). The browser's type is only a claim, so `magic` checks the first bytes as well.
- */
-const FILE_TYPES: Record<string, { mime: string; accepts: string[]; magic: (b: Buffer) => boolean }> = {
-  pdf: { mime: "application/pdf", accepts: ["application/pdf"], magic: (b) => b.subarray(0, 1024).includes("%PDF-") },
-  png: { mime: "image/png", accepts: ["image/png"], magic: startsWith([0x89, 0x50, 0x4e, 0x47]) },
-  jpg: { mime: "image/jpeg", accepts: ["image/jpeg"], magic: startsWith([0xff, 0xd8, 0xff]) },
-  jpeg: { mime: "image/jpeg", accepts: ["image/jpeg"], magic: startsWith([0xff, 0xd8, 0xff]) },
-  webp: { mime: "image/webp", accepts: ["image/webp"], magic: (b) => ascii("RIFF")(b) && ascii("WEBP", 8)(b) },
-  heic: { mime: "image/heic", accepts: ["image/heic", "image/heif"], magic: ascii("ftyp", 4) },
-  heif: { mime: "image/heif", accepts: ["image/heic", "image/heif"], magic: ascii("ftyp", 4) },
-  docx: { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", accepts: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"], magic: isZip },
-  xlsx: { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", accepts: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"], magic: isZip },
-  csv: { mime: "text/csv", accepts: ["text/csv", "application/csv", "application/vnd.ms-excel", "text/plain"], magic: looksLikeText },
-  txt: { mime: "text/plain", accepts: ["text/plain"], magic: looksLikeText },
-};
-const ALLOWED_LABEL = "PDF, PNG, JPEG, WebP, HEIC, Word (.docx), Excel (.xlsx), CSV, or plain text";
-
-/** Name used in the storage path: last path segment, ASCII letters, digits, dot, dash, underscore. Never starts with a dot. */
-function safeFilename(name: string): string {
-  const base = name.split(/[\\/]/).pop() ?? "";
-  const cleaned = base.normalize("NFKD").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_+/g, "_").replace(/^[._-]+/, "");
-  const dot = cleaned.lastIndexOf(".");
-  const stem = (dot > 0 ? cleaned.slice(0, dot) : cleaned).slice(0, 100) || "file";
-  const ext = dot > 0 ? cleaned.slice(dot).toLowerCase().slice(0, 12) : "";
-  return `${stem}${ext}`;
-}
 
 export type DocTarget = "lead" | "property" | "buyer";
 
@@ -73,21 +38,16 @@ export async function uploadDocument(kind: DocTarget, targetId: string, form: Fo
   try {
     requireCan(session, kind === "buyer" ? "buyer:write" : "lead:write");
     if (!isUuid(targetId)) return { ok: false, error: "Not found." };
-    const file = form.get("file");
-    if (!(file instanceof File) || !file.name) return { ok: false, error: "Choose a file to upload." };
-    if (file.size === 0) return { ok: false, error: "That file is empty." };
-    if (file.size > MAX_BYTES) return { ok: false, error: "Files are limited to 25 MB." };
-    const safeName = safeFilename(file.name);
-    const rule = FILE_TYPES[safeName.split(".").pop() ?? ""];
-    const claimed = file.type.toLowerCase();
-    if (!rule || !safeName.includes(".") || (claimed && claimed !== "application/octet-stream" && !rule.accepts.includes(claimed))) return { ok: false, error: `That file type is not allowed. Upload a ${ALLOWED_LABEL} file.` };
+    const checked = checkUploadFile(form.get("file"));
+    if (!checked.ok) return checked;
+    const { file, safeName, rule } = checked;
     const target = await resolveTarget(session.orgId, kind, targetId);
     if (!target.ok) return target;
     const data = Buffer.from(await file.arrayBuffer());
-    if (data.length !== file.size || data.length > MAX_BYTES) return { ok: false, error: "The upload did not arrive whole. Try again." };
-    if (!rule.magic(data)) return { ok: false, error: "The file contents do not match its extension." };
+    const bytes = checkUploadBytes(data, file.size, rule);
+    if (!bytes.ok) return bytes;
 
-    const filename = (file.name.split(/[\\/]/).pop() ?? "").replace(/\p{Cc}/gu, "").trim().slice(0, 200) || safeName;
+    const filename = displayFilename(file.name, safeName);
     const storagePath = `${target.pathPrefix}/${crypto.randomUUID()}-${safeName}`;
     const storage = fileStorage();
     await storage.put(storagePath, data, rule.mime);

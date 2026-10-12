@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { dispatchDue } from "@/lib/services/campaigns";
 import { raiseAlerts } from "@/lib/services/alerts";
+import { runFormReminders } from "@/lib/services/form-notifications";
 import { ensureDevDatabase } from "@dealcalc/db";
 
 export const dynamic = "force-dynamic";
@@ -14,5 +15,6 @@ export async function GET(request: NextRequest) {
   await ensureDevDatabase();
   const result = await dispatchDue(100);
   const alerts = await raiseAlerts();
-  return NextResponse.json({ ...result, alerts });
+  const forms = await runFormReminders().catch((err) => ({ dueSoon: 0, overdue: 0, escalated: 0, error: err instanceof Error ? err.message : "unknown error" }));
+  return NextResponse.json({ ...result, alerts, forms });
 }

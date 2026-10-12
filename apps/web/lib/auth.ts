@@ -16,6 +16,8 @@ export type Session = {
   email: string;
   fullName: string;
   role: Role;
+  /** May build and publish Workflow Forms. Admins always may. */
+  isFormAdmin: boolean;
   authMode: "supabase" | "dev";
 };
 
@@ -60,7 +62,7 @@ async function toSession(db: Awaited<ReturnType<typeof getDb>>, profile: typeof 
   return {
     profileId: profile.id, userId: profile.userId, orgId: profile.orgId, orgName: org?.name ?? "Workspace",
     branding: (org?.branding ?? {}) as Record<string, string | undefined>,
-    email: profile.email, fullName: profile.fullName, role: profile.role, authMode,
+    email: profile.email, fullName: profile.fullName, role: profile.role, isFormAdmin: profile.role === "admin" || profile.isFormAdmin, authMode,
   };
 }
 
@@ -72,10 +74,12 @@ export async function requireSession(): Promise<Session> {
 
 const RANK: Record<Role, number> = { viewer: 0, dispositions: 1, acquisitions: 1, admin: 2 };
 
-export function can(session: Session, action: "lead:write" | "buyer:write" | "message:send" | "analysis:write" | "settings:write" | "campaign:write"): boolean {
+export function can(session: Session, action: "lead:write" | "buyer:write" | "message:send" | "analysis:write" | "settings:write" | "campaign:write" | "form:build" | "form:fill"): boolean {
   const r = session.role;
   if (r === "admin") return true;
   switch (action) {
+    case "form:build": return session.isFormAdmin;
+    case "form:fill": return r !== "viewer";
     case "lead:write": case "analysis:write": case "campaign:write": return r === "acquisitions";
     case "buyer:write": return r === "dispositions";
     case "message:send": return r === "acquisitions" || r === "dispositions";
