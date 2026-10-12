@@ -2,6 +2,7 @@ import { pgTable, text, uuid, boolean, jsonb, numeric, integer, timestamp, index
 import { base, leadStatusEnum, urgencyEnum, activityTypeEnum, taskKindEnum, tagKindEnum, offerTypeEnum, offerStatusEnum, savedViewEntityEnum, alertKindEnum, scoreReviewStatusEnum } from "./_shared";
 import { orgs, profiles } from "./identity";
 import { properties, contacts } from "./properties";
+import { formSubmissions, formTasks } from "./forms";
 
 /** Deal thesis checklist. One boolean and one note per issue, plus a derived score. See docs/CRM_ARCHITECTURE.md 4.7. */
 export type DealIssueKey =
@@ -120,7 +121,9 @@ export const documents = pgTable("documents", {
   mime: text("mime").notNull(),
   size: integer("size").notNull(),
   uploadedBy: uuid("uploaded_by").references(() => profiles.id, { onDelete: "set null" }),
-}, (t) => [index("documents_lead_idx").on(t.leadId)]);
+  /** Set for files attached to a form submission, including uploads by external parties. */
+  submissionId: uuid("submission_id").references(() => formSubmissions.id, { onDelete: "set null" }),
+}, (t) => [index("documents_lead_idx").on(t.leadId), index("documents_submission_idx").on(t.submissionId)]);
 
 /** Raised by the cron dispatcher. dedupe_key is what stops a repeat run from raising the same alert twice. */
 export const alerts = pgTable("alerts", {
@@ -134,6 +137,7 @@ export const alerts = pgTable("alerts", {
   dedupeKey: text("dedupe_key").notNull(),
   readAt: timestamp("read_at", { withTimezone: true }),
   dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+  formTaskId: uuid("form_task_id").references(() => formTasks.id, { onDelete: "cascade" }),
 }, (t) => [
   uniqueIndex("alerts_org_dedupe").on(t.orgId, t.dedupeKey),
   index("alerts_recipient_idx").on(t.orgId, t.recipientId, t.readAt),

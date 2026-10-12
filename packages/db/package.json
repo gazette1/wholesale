@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@dealcalc/engine": "workspace:*",
+    "@dealcalc/forms": "workspace:*",
     "@electric-sql/pglite": "^0.3.6",
     "drizzle-orm": "^0.44.4",
     "postgres": "^3.4.7",

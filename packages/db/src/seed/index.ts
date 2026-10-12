@@ -11,6 +11,7 @@ import {
   rehabLineItems, costDefaults, propertyReports, comps, messages,
 } from "../schema";
 import { REHAB_CHECKLIST } from "./rehabChecklist";
+import { seedFormTemplates } from "./forms";
 export { REHAB_CHECKLIST, type ChecklistRow } from "./rehabChecklist";
 
 export const STAGES = [
@@ -74,7 +75,7 @@ const BASE_ACQ: Omit<AcquisitionsInput, "holdMonths" | "asIsValue" | "purchasePr
   sellHomeWarranty: 0, sellStaging: 0, sellMarketing: 0, sellMisc: 0,
 };
 
-export type SeedResult = { orgId: string; profileIds: Record<string, string>; leadIds: string[]; propertyIds: string[]; buyerIds: string[]; analysisIds: string[] };
+export type SeedResult = { orgId: string; profileIds: Record<string, string>; leadIds: string[]; propertyIds: string[]; buyerIds: string[]; analysisIds: string[]; formIds: string[] };
 
 export async function seed(db: Db, options: { seed?: number; adminEmail?: string } = {}): Promise<SeedResult> {
   const rand = rng(options.seed ?? 42);
@@ -90,7 +91,7 @@ export async function seed(db: Db, options: { seed?: number; adminEmail?: string
   const orgId = org!.id;
 
   const profileRows = await db.insert(profiles).values([
-    { orgId, fullName: "Russ Harris", email: options.adminEmail ?? "russellharrisrei@gmail.com", role: "admin" },
+    { orgId, fullName: "Russ Harris", email: options.adminEmail ?? "russellharrisrei@gmail.com", role: "admin", isFormAdmin: true },
     { orgId, fullName: "Ous", email: "ous@example.com", role: "acquisitions" },
     { orgId, fullName: "Dispo Lead", email: "dispositions@example.com", role: "dispositions" },
     { orgId, fullName: "Partner View", email: "viewer@example.com", role: "viewer" },
@@ -285,5 +286,7 @@ export async function seed(db: Db, options: { seed?: number; adminEmail?: string
     await db.insert(buyerCriteria).values({ orgId, buyerId: buyer!.id, states: b.states, counties: b.counties, propertyTypes: b.types, priceMin: String(b.min), priceMax: String(b.max), arvPctMax: b.arvPct.toFixed(4), buyingFormula: `${Math.round(b.arvPct * 100)}% of ARV minus repairs`, conditionLevels: b.cond, occupancyPrefs: ["vacant", "owner"], funding: b.funding, proofOfFundsOnFile: rand() > 0.4, sightUnseen: b.sight, minMarginAmount: String(b.margin), closesInDays: between(7, 30) });
   }
 
-  return { orgId, profileIds, leadIds, propertyIds, buyerIds, analysisIds };
+  const formIds = await seedFormTemplates(db, orgId, profileIds.admin ?? null);
+
+  return { orgId, profileIds, leadIds, propertyIds, buyerIds, analysisIds, formIds };
 }

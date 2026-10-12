@@ -1,6 +1,6 @@
 import { pgTable, text, uuid, boolean, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { roleEnum } from "./_shared";
+import { roleEnum, notifyByEnum } from "./_shared";
 
 export const orgs = pgTable("orgs", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -21,6 +21,10 @@ export const profiles = pgTable("profiles", {
   role: roleEnum("role").notNull().default("viewer"),
   twilioNumber: text("twilio_number"),
   active: boolean("active").notNull().default(true),
+  /** May build and publish forms. True for admins by default, granted to named profiles otherwise. */
+  isFormAdmin: boolean("is_form_admin").notNull().default(false),
+  notifyBy: notifyByEnum("notify_by").notNull().default("email"),
+  mobilePhone: text("mobile_phone"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [

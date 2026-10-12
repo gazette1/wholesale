@@ -7,6 +7,7 @@ import type { Db } from "../client";
 import { orgs, profiles, pipelineStages, leadSources, tags, messageTemplates, costDefaults } from "../schema";
 import { REHAB_CHECKLIST } from "./rehabChecklist";
 import { STAGES, ISSUE_TAGS, TEMPLATES } from "./index";
+import { seedFormTemplates } from "./forms";
 
 export type TeamMember = { fullName: string; email: string; role: "admin" | "acquisitions" | "dispositions" | "viewer" };
 
@@ -22,7 +23,7 @@ export type BootstrapOptions = {
 
 export const DEFAULT_SOURCES = ["Website", "Referral", "Direct Mail", "Cold call", "Driving for Dollars", "PPC"];
 
-export type BootstrapResult = { orgId: string; profileIds: string[]; stageCount: number; templateCount: number; costDefaultCount: number };
+export type BootstrapResult = { orgId: string; profileIds: string[]; stageCount: number; templateCount: number; costDefaultCount: number; formIds: string[] };
 
 export async function bootstrap(db: Db, options: BootstrapOptions): Promise<BootstrapResult> {
   if (!options.orgName.trim()) throw new Error("orgName is required");
@@ -44,7 +45,7 @@ export async function bootstrap(db: Db, options: BootstrapOptions): Promise<Boot
 
   // Profiles are claimed by email the first time that person signs in, so user_id stays null here.
   const profileRows = await db.insert(profiles).values(
-    options.team.map((m) => ({ orgId, fullName: m.fullName.trim(), email: m.email.trim().toLowerCase(), role: m.role, active: true })),
+    options.team.map((m) => ({ orgId, fullName: m.fullName.trim(), email: m.email.trim().toLowerCase(), role: m.role, active: true, isFormAdmin: m.role === "admin" })),
   ).returning();
 
   const stageRows = await db.insert(pipelineStages).values(
@@ -69,7 +70,10 @@ export async function bootstrap(db: Db, options: BootstrapOptions): Promise<Boot
     REHAB_CHECKLIST.map((l) => ({ orgId, rowNumber: l.row, itemNumber: l.itemNumber, question: l.question, option: l.option, unitCost: l.unitCost === null ? null : l.unitCost.toFixed(2), unit: l.unit, market: "Baltimore metro (workbook defaults)", asOf: "2026-09-14" })),
   ).returning();
 
-  return { orgId, profileIds: profileRows.map((p) => p.id), stageCount: stageRows.length, templateCount: templateRows.length, costDefaultCount: costRows.length };
+  const firstAdmin = profileRows.find((p) => p.role === "admin");
+  const formIds = await seedFormTemplates(db, orgId, firstAdmin?.id ?? null);
+
+  return { formIds, orgId, profileIds: profileRows.map((p) => p.id), stageCount: stageRows.length, templateCount: templateRows.length, costDefaultCount: costRows.length };
 }
 
 /** Parses "Russ Harris <russ@example.com>:admin, Ous <ous@example.com>:acquisitions". */
